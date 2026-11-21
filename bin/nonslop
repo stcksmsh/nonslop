@@ -42,8 +42,13 @@ def load_project(root: Path) -> dict:
         return tomllib.load(handle)
 
 
+# Allowed by earlier templates. Each can run any command, which defeats the deny list
+# (`env rm -rf ...`, `find -exec`, `gh api -X DELETE`), so `init` takes them out again.
+RETIRED_ALLOW = ("Bash(env:*)", "Bash(timeout:*)", "Bash(python3:*)", "Bash(find:*)", "Bash(gh api:*)")
+
+
 def merge_settings(target: Path) -> None:
-    """Add nonslop's entries to a project's settings without removing anything already there."""
+    """Add nonslop's entries to a project's settings; remove only the retired allow rules."""
     template = json.loads((TEMPLATES / "settings.json").read_text(encoding="utf-8"))
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -62,6 +67,10 @@ def merge_settings(target: Path) -> None:
     for kind in ("allow", "deny"):
         existing = permissions.setdefault(kind, [])
         existing.extend(rule for rule in template["permissions"][kind] if rule not in existing)
+    for rule in RETIRED_ALLOW:
+        if rule in permissions["allow"]:
+            permissions["allow"].remove(rule)
+            print(f"  remove  allow {rule}")
     target.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
     print(f"  merge   {target}")
 
