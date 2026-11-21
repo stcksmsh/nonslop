@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from nonslop_config import load_config, read_hook_input, start_dir  # noqa: E402
+from nonslop_config import load_config, read_hook_input, start_dir, unchanged_since_start  # noqa: E402
 
 SLOP = Path(__file__).resolve().parent.parent / "tools" / "slopstop" / "slop.py"
 
@@ -25,7 +25,9 @@ def main() -> int:
     loaded = load_config(cwd)
     if loaded is None:
         return 0
-    config, _root = loaded
+    config, root = loaded
+    if unchanged_since_start(config, root, cwd, hook_input.get("session_id", "")):
+        return 0
     prefix = config.get("done", {}).get("branch_prefix", "claude/")
     branch = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd, capture_output=True, text=True, check=False

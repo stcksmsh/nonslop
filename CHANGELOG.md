@@ -5,6 +5,13 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.1.1
+
+- The Stop checks skip a session that has changed nothing since it started. Before, a session that only
+  answered a question on a `claude/` branch was blocked over work already on the branch, and told to
+  revert the owner's own `.nonslop.toml` and `.claude/settings.json`. SessionStart records the state
+  under `<scratch>/nonslop/sessions/`.
+
 ## 0.1.0
 
 First versioned release.
