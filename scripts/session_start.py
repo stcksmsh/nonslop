@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from nonslop_config import load_config, read_hook_input, start_dir  # noqa: E402
+from nonslop_config import load_config, read_hook_input, record_session_start, start_dir  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 STATE_MAX_LINES = 80
@@ -87,6 +87,8 @@ def main() -> int:
         text = render(config, root, with_state=False)
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": text}}))
     else:
+        if mode != "--print":
+            record_session_start(config, root, start_dir(hook_input), hook_input.get("session_id", ""))
         print(render(config, root, with_state=True))
     return 0
 

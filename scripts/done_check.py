@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gates import run_gates  # noqa: E402
-from nonslop_config import load_config, read_hook_input, scratch_dir, start_dir  # noqa: E402
+from nonslop_config import load_config, read_hook_input, scratch_dir, start_dir, unchanged_since_start  # noqa: E402
 
 DEFAULT_REQUIRE = ["clean_tree", "pushed", "pr"]
 
@@ -136,6 +136,8 @@ def main() -> int:
     if loaded is None:
         return 0
     config, root = loaded
+    if unchanged_since_start(config, root, cwd, hook_input.get("session_id", "")):
+        return 0
     done = config.get("done", {})
 
     code, branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
