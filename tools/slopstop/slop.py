@@ -271,14 +271,19 @@ def collect_diff(root: Path, mode: str, base: str | None, only: list[str] | None
     args += ["--cached"] if mode == "staged" else [base or "HEAD"]
     if only:
         args += ["--", *only]
-    diffs = parse_diff(sh(args, root).stdout)
+    r = sh(args, root)
+    if r.returncode != 0:  # an unknown base must not read as "no changes"
+        sys.exit(f"slopstop: {' '.join(args)} failed: {(r.stderr.strip().splitlines() or ['no output'])[0]}")
+    diffs = parse_diff(r.stdout)
+    base = "HEAD" if mode == "staged" else (base or "HEAD")
     for d in diffs.values():
-        d.base = "HEAD" if mode == "staged" else (base or "HEAD")
+        d.base = base
     if mode != "staged":  # untracked files count as fully added
         r = sh(["git", "ls-files", "--others", "--exclude-standard", *(["--", *only] if only else [])], root)
         for p in r.stdout.split():
             if (root / p).is_file():
                 diffs[p] = _whole_file(root, p, new=True)
+                diffs[p].base = base  # a new protected file is a gate change too
     return diffs
 
 def _whole_file(root: Path, p: str, new: bool = False) -> FileDiff:
