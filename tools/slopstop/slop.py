@@ -519,7 +519,7 @@ def a_ruff(root, files, cfg):
     if not py or not have("ruff"):
         return []
     r = sh(["ruff", "check", "--no-fix", "--output-format", "json", "--extend-select", RUFF_SELECT,
-            "--exit-zero", *py], root, timeout=60)
+            "--exit-zero", "--no-cache", *py], root, timeout=60)  # no .ruff_cache/ left in the project
     out = []
     for it in json.loads(r.stdout or "[]"):
         code = it.get("code") or "syntax"
