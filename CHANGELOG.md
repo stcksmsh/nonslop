@@ -5,6 +5,13 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.1.3
+
+- The session rules state the project's slice branch prefix (`[done].branch_prefix`), and the coordinator
+  names builder branches with it instead of a fixed `claude/`. A project that narrows the prefix (for
+  example `claude/slice-`, so other `claude/` work branches are not held to slice rules) still gets its
+  slices checked.
+
 ## 0.1.2
 
 - The hooks look for `.nonslop.toml` only inside the current git repository. A repository nested in a

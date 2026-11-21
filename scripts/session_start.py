@@ -36,7 +36,8 @@ def render_commands(config: dict) -> str:
 
 def render_project_rules(config: dict) -> str:
     env = config.get("env", {})
-    lines = []
+    prefix = config.get("done", {}).get("branch_prefix", "claude/")
+    lines = [f"- Slice branches are named `{prefix}<slice>`; only those are checked as finished slices at Stop."]
     if scratch := env.get("scratch"):
         lines.append(
             f"- All scratch (scripts, renders, logs, repo copies) goes under `{scratch}/<job-id>/`. "
@@ -48,7 +49,7 @@ def render_project_rules(config: dict) -> str:
             f"`env PIPEWIRE_NODE={sink} PULSE_SINK={sink} ...` and prefer offline renders."
         )
     lines.extend(f"- {note}" for note in config.get("rules", {}).get("notes", []))
-    return section("This project", "\n".join(lines)) if lines else ""
+    return section("This project", "\n".join(lines))
 
 
 def render_state(config: dict, root: Path) -> str:
