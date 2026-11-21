@@ -400,7 +400,7 @@ def semantic_checks(p: str, lang: str | None, added: dict[int, str], file_lines:
             dm = (RS_FN if lang == "rust" else PY_DEF).match(line)
             if dm:
                 fname = dm.group(1)
-                vm = re.match(r"^(.+?)_(new|v\d+|2|alt|next|better|improved|enhanced|fixed|updated|old|copy|backup)$", fname)
+                vm = re.match(r"^(.+?)_(new|v\d+|2|alt|next|better|improved|enhanced|fixed|updated|old|copy)$", fname)
                 if vm and not re.match(r"^(is|has|was|brand|create|append|with|try)_", fname):
                     base = vm.group(1)
                     pat = rf"\b(fn|def)\s+{re.escape(base)}\b"

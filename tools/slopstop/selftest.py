@@ -132,6 +132,9 @@ CASES = [
             pub fn parse_or_report(s: &str) -> Result<u32, String> {
                 s.parse::<u32>().map_err(|e| e.to_string())
             }
+            pub struct TrayBackup { pub id: u32 }
+            pub fn delete(ids: &mut Vec<u32>) { ids.clear() }
+            pub fn delete_backup(ids: &mut Vec<u32>, id: u32) { ids.retain(|i| *i != id) }
             """),
          want=set(), deny_all=True),
     dict(name="markdown rules text does not trip the suppression guard", path="CLAUDE.md", tools=[],
