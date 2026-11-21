@@ -92,9 +92,7 @@ eval/              how slopstop and a competitor were measured: reports, seeds, 
 
 - A live run: `/nonslop:coordinator` dispatching a builder and reviewing the result.
 - `isolation: worktree` on the builder: where the worktree lands and that it starts from the remote default branch.
-- That `SubagentStop` and `SubagentStart` match the plugin-scoped agent names used in `hooks/hooks.json`, and that `cwd` in their input is the subagent's worktree.
-- slopstop with `ast-grep` installed (one selftest case fails without it; see `tools/slopstop/NONSLOP-CHANGES.md`).
-- The permission lists in `templates/settings.json` under auto mode.
+- That `SubagentStop` and `SubagentStart` match the plugin-scoped agent names used in `hooks/hooks.json`, and that `cwd` in their input is the subagent's worktree.- The permission lists in `templates/settings.json` under auto mode.
 
 ## Licensing
 
