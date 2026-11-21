@@ -1,31 +1,48 @@
 # nonslop per-project wiring. Copied to <project>/.nonslop.toml by `nonslop init`.
-# A project without this file gets no nonslop behaviour.
+# A project without this file gets no nonslop behaviour at all.
+# Agents are blocked from editing this file; only the owner changes it.
 
 [commands]
-# Exact commands agents must use. Add or rename keys freely; all are shown to agents.
+# The exact commands agents must use. Add or rename keys freely; every non-empty one is shown to agents.
+# No shell syntax (pipes, &&, VAR=x): commands are run without a shell. Wrap anything complex in a script.
 test = ""
 lint = ""
 clean = ""
 
-[state]
-# The single handover file the coordinator keeps. Printed at every session start.
-file = "docs/STATE.md"
+[slop]
+# Static slop checks (tools/slopstop). All keys are optional; these are the common ones.
+# allow_suppress = ["clippy::too_many_arguments"]   # suppressions agents may still add
+# exclude = ["docs/**"]                             # extends the built-in excludes
+# warn = ["file-too-large"]                         # downgrade a rule to advisory
+# block = []                                        # upgrade a rule to blocking
+# disable = []                                      # drop a rule
+# stop_retries = 2
 
 [done]
-# Checked when an agent on a matching branch tries to stop.
+# Checked when an agent on a matching branch tries to finish.
 branch_prefix = "claude/"
-require = ["clean_tree", "pushed", "pr", "cleaned"]
-# Paths that must not exist when a slice ends (build output).
-clean_paths = []
+require = ["clean_tree", "pushed", "pr"]
+# Keys of [commands] to run as gates before a slice may end. Leave empty when CI already
+# runs them on every pull request; fill in for projects without CI.
+run = []
+gate_timeout_s = 1800
+# Run [commands].clean automatically once a slice passes.
+auto_clean = false
 # Refuse to finish below this much free disk. 0 disables.
 min_free_gb = 0
 # Identical failures in a row before the agent is allowed to stop anyway.
 stop_retries = 2
 
+[state]
+# The single handover file the coordinator keeps. Printed at every session start.
+file = "docs/STATE.md"
+
 [env]
-# Project-relative scratch root. Hook logs go to <scratch>/nonslop/.
+# Project-relative scratch root. Hook logs go to <scratch>/nonslop/. Must be git-ignored.
 scratch = ".claude/tmp"
-# Set to a null sink name if agents must never use the default audio output.
+# Null sink for agents, when they must never use the default audio output.
 # audio_sink = ""
-# Extra one-line constraints printed to every session.
+
+[rules]
+# Extra one-line rules for this project, shown to every agent.
 notes = []

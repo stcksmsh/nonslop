@@ -11,25 +11,63 @@
     "nonslop@nonslop": true
   },
   "env": {
-    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
   },
   "permissions": {
     "allow": [
-      "Bash(git fetch *)",
-      "Bash(git switch *)",
-      "Bash(git add *)",
-      "Bash(git commit *)",
-      "Bash(git push -u origin claude/*)",
-      "Bash(git push origin claude/*)",
-      "Bash(gh pr create *)",
-      "Bash(gh pr view *)",
-      "Bash(gh pr diff *)",
-      "Bash(gh pr checks *)"
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Agent",
+      "Bash(git:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr ready:*)",
+      "Bash(gh api:*)",
+      "Bash(gh run:*)",
+      "Bash(env:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(sed -n:*)",
+      "Bash(diff:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(python3:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(jq:*)",
+      "Bash(test:*)",
+      "Bash(file:*)",
+      "Bash(timeout:*)",
+      "Bash(date:*)",
+      "Bash(stat:*)",
+      "Bash(touch:*)",
+      "Bash(nonslop:*)"
     ],
     "deny": [
-      "Bash(git push --force*)",
-      "Bash(git push -f*)",
-      "Bash(gh pr merge *)"
+      "Bash(gh pr merge:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git branch -D:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(rm -rf:*)",
+      "Bash(gh repo:*)",
+      "Bash(gh release:*)"
     ]
   }
 }

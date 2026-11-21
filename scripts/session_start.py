@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""SessionStart hook: print shared rules, project wiring and the current state file.
+"""Print the rules and project wiring into a fresh context.
 
-Runs on startup, /clear and compaction, so a fresh context always begins with
-the same rules and the newest handover without anyone pasting them.
-Stdout becomes context for the session.
+  session_start.py              SessionStart hook: plain text on stdout, for the main session.
+                                Runs on startup, /clear and compaction. Includes the state file.
+  session_start.py --subagent   SubagentStart hook: the same rules as additionalContext JSON, so
+                                builders and reviewers start with them. No state file: a subagent
+                                gets its task from its prompt.
+  session_start.py --print      Plain text for a human (`nonslop rules`).
+
+Silent in projects without .nonslop.toml.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -21,26 +27,28 @@ def section(title: str, body: str) -> str:
 
 
 def render_commands(config: dict) -> str:
-    commands = config.get("commands", {})
+    commands = {name: command for name, command in config.get("commands", {}).items() if command}
     if not commands:
         return ""
     lines = [f"- {name}: `{command}`" for name, command in commands.items()]
-    return section("Project commands (use these, do not guess)", "\n".join(lines))
+    return section("Project commands (use these exactly, do not substitute your own)", "\n".join(lines))
 
 
-def render_env(config: dict) -> str:
+def render_project_rules(config: dict) -> str:
     env = config.get("env", {})
     lines = []
     if scratch := env.get("scratch"):
-        lines.append(f"- All scratch files go under `{scratch}/<job-id>/`. Never write to the home directory.")
+        lines.append(
+            f"- All scratch (scripts, renders, logs, repo copies) goes under `{scratch}/<job-id>/`. "
+            "Never write to the home directory, `/tmp` or `~/.cache`. Delete your scratch before you stop."
+        )
     if sink := env.get("audio_sink"):
         lines.append(
-            f"- Never play audio on the default output. Use `PIPEWIRE_NODE={sink} PULSE_SINK={sink}` "
-            "and prefer offline renders."
+            f"- Never play audio on the default output. Run anything that makes sound with "
+            f"`env PIPEWIRE_NODE={sink} PULSE_SINK={sink} ...` and prefer offline renders."
         )
-    for note in env.get("notes", []):
-        lines.append(f"- {note}")
-    return section("Machine constraints", "\n".join(lines)) if lines else ""
+    lines.extend(f"- {note}" for note in config.get("rules", {}).get("notes", []))
+    return section("This project", "\n".join(lines)) if lines else ""
 
 
 def render_state(config: dict, root: Path) -> str:
@@ -57,19 +65,29 @@ def render_state(config: dict, root: Path) -> str:
     return section(f"Current state ({relative})", body)
 
 
-def main() -> int:
-    loaded = load_config(start_dir(read_hook_input()))
-    if loaded is None:
-        return 0
-    config, root = loaded
+def render(config: dict, root: Path, with_state: bool) -> str:
     parts = [
         "# nonslop",
         (PLUGIN_ROOT / "rules" / "core.md").read_text(encoding="utf-8"),
         render_commands(config),
-        render_env(config),
-        render_state(config, root),
+        render_project_rules(config),
+        render_state(config, root) if with_state else "",
     ]
-    print("\n".join(part for part in parts if part))
+    return "\n".join(part for part in parts if part)
+
+
+def main() -> int:
+    mode = sys.argv[1] if len(sys.argv) > 1 else ""
+    hook_input = {} if mode == "--print" else read_hook_input()
+    loaded = load_config(start_dir(hook_input))
+    if loaded is None:
+        return 0
+    config, root = loaded
+    if mode == "--subagent":
+        text = render(config, root, with_state=False)
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": text}}))
+    else:
+        print(render(config, root, with_state=True))
     return 0
 
 

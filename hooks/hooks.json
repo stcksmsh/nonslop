@@ -12,6 +12,42 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "matcher": "^nonslop:(builder|reviewer)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/session_start.py --subagent",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/tools/slopstop/slop.py hook pre",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/tools/slopstop/slop.py hook post",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
     "PermissionDenied": [
       {
         "hooks": [
@@ -28,19 +64,30 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/slop_stop.py",
+            "timeout": 900
+          },
+          {
+            "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/done_check.py",
-            "timeout": 60
+            "timeout": 1900
           }
         ]
       }
     ],
     "SubagentStop": [
       {
+        "matcher": "^nonslop:builder$",
         "hooks": [
           {
             "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/slop_stop.py",
+            "timeout": 900
+          },
+          {
+            "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/done_check.py",
-            "timeout": 60
+            "timeout": 1900
           }
         ]
       }

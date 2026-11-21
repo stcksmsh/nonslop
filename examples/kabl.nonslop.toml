@@ -1,0 +1,40 @@
+# kabl wiring, assembled from kabl's local CLAUDE.md, the builder prompts and the slopstop evaluation.
+# Copy to kabl/.nonslop.toml, check each value, and commit it to master.
+
+[commands]
+fmt = "cargo fmt --all"
+lint = "cargo +1.99.0 clippy --workspace --all-targets -- -D warnings"
+test = "cargo kabl test"
+clean = "cargo clean"
+
+[slop]
+# From the evaluation (eval/slopstop/REPORT-IMPROVED.md): 11 findings over nine PRs with this config.
+allow_suppress = ["clippy::too_many_arguments"]   # house pattern in preset builders and egui helpers
+exclude = ["docs/**"]                             # probe scripts and design mockups, not product code
+warn = ["file-too-large", "single-impl-trait"]
+
+[done]
+branch_prefix = "claude/"
+require = ["clean_tree", "pushed", "pr"]
+# CI runs fmt, clippy and the tests on every pull request, so they are not repeated here.
+run = []
+auto_clean = true        # /secondary fills with target/ directories
+min_free_gb = 30
+stop_retries = 2
+
+[state]
+file = "docs/STATE.md"
+
+[env]
+scratch = ".claude/tmp"
+audio_sink = "kabl_agents"
+
+[rules]
+notes = [
+  "Caveman and Ponytail run at ultra in this project, from the first message and after every context clear.",
+  "Confirm with `pactl list sink-inputs` that your streams are on `kabl_agents`. Never change the default sink.",
+  "Use a scratch REAPER resource directory. Never touch the owner's REAPER configuration.",
+  "Golden audio renders stay bit-identical unless the slice says otherwise. Say how you checked.",
+  "Set PR bodies with `gh api`; `gh pr edit` fails on this machine.",
+  "Any ABI, format or contract may still break before 1.0. Nothing is fixed until ship.",
+]

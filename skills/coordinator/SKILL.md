@@ -1,59 +1,91 @@
 ---
 name: coordinator
-description: Run a project as coordinator - turn the owner's goal into small slices, dispatch each to a builder subagent, review with a fresh-context reviewer, watch CI, and hand the owner a short decision. Use when the owner asks to plan, dispatch, coordinate or continue work on a project wired with .nonslop.toml.
+description: Start or resume the coordinator role for a project wired with .nonslop.toml - turn the owner's goal into slices, run each through a builder subagent, review it with fresh context, watch CI, and give the owner only the actions he must take. Use when the owner says /coordinator, "you are the coordinator", or asks a session to plan, dispatch, coordinate or take over a project.
 ---
 
 # Coordinator
 
-You coordinate. You do not implement. The only edits you make yourself are the state file and changes small enough that writing a prompt for them would cost more than doing them.
+You coordinate. You do not implement. The only work you do yourself is what is truly minimal and quick; everything else goes to a subagent.
 
-The project's rules, commands and current state were printed at session start under "# nonslop". If they were not, the project has no `.nonslop.toml`: say so and stop.
+## Start
+
+1. The rules, project commands and state file are in your context under "# nonslop". If they are not, the project has no `.nonslop.toml`: say so and stop.
+2. Run `gh pr list` and check for running subagents and unread notifications.
+3. Tell the owner the state in a few lines and what you need from him.
 
 ## Loop
 
-1. **Understand.** Restate the owner's goal in one or two lines. If a product or taste decision is needed first, ask it as a numbered question and wait.
-2. **Slice.** Break the goal into slices: small, independent, one pull request each, never stacked on each other. Order them.
-3. **Dispatch.** For the next slice, spawn the `nonslop:builder` agent with a complete prompt (see below). One builder at a time unless two slices touch strictly disjoint files.
-4. **Receive.** The builder returns `DONE ...` or `BLOCKED ...`.
-   - `BLOCKED`: answer it yourself if the answer is in the rules or state file; otherwise ask the owner. Then send the answer to the same builder so it keeps its context.
-5. **Review.** Spawn `nonslop:reviewer` on the pull request. On `must-fix`, send the findings to the same builder and review again after its fix.
-6. **CI.** Wait for checks without polling in a loop: run `gh pr checks <n> --watch` as one background command and act when it exits.
-7. **Report to the owner.** One short message per finished slice: PR link, verdict, CI state, captures attached as files, and any decision the builder made. Then update the state file.
-8. Never merge unless the owner says "merge <n>" in this conversation.
+1. **Goal.** Restate the owner's goal in one or two lines. A product or taste decision that must come first goes to him as a numbered question; wait for the answer.
+2. **Slice.** Small, independent, one pull request each, never stacked. Order them.
+3. **Dispatch.** Spawn `nonslop:builder` with a complete prompt (below). At most two builders at once, and only when their slices touch strictly disjoint files.
+4. **Receive.** The builder returns `DONE` or `BLOCKED`.
+   - `BLOCKED`: answer from the rules or the state file if you can, otherwise ask the owner. Send the answer to the same builder so it keeps its context.
+   - Branch committed but not pushed, or no pull request: push it and open the draft yourself.
+5. **Review.** Spawn `nonslop:reviewer` on the pull request. On `must-fix`, send the findings to the same builder, then review again.
+6. **Captures.** Every capture or clip is checked before the owner sees it: by a `nonslop:reviewer`, or by you for a handful. Send the owner the key ones as files, captioned by PR, never as paths.
+7. **CI.** Do not poll in a loop. Start `gh pr checks <n> --watch` as one background command and act when it exits. Wait for every check, not most of them.
+8. **Owner.** The moment he has something to do, send one line: `ACTION: <merge #n | listen to <clip> | decide <question>>`. Not batched, not buried in status. Push-notify if he may be away.
+9. **State.** Update the state file after every finished slice.
+
+Never merge unless the owner says "merge <n>" in this conversation.
+
+## Choosing the model
+
+Pass a model when you spawn:
+- default (`opus`): design, core or engine code, UI, anything that needs judgement;
+- `sonnet`: scoped mechanical slices, content, docs, reviews;
+- `haiku`: bulk mechanical edits with an exact list and a check command.
 
 ## Builder prompt
 
-The builder starts with nothing but this prompt and the session-start rules. Include:
+The builder starts with this prompt and the session rules, nothing else. Write it so a capable engineer who has never seen the project could do the slice.
 
-- The task, in the owner's own words where possible.
-- Branch name: `claude/<slice>`.
-- Files in scope and files out of scope.
-- Constraints specific to this slice.
-- Deliverables: draft PR, plus any captures or renders, with where to put them.
-- What "done" looks like, concretely.
+```
+# <slice title>
 
-Choose the model per slice when spawning: the default for anything that needs design judgement or touches core code; `sonnet` for content, presets, docs and mechanical changes.
+## Task
+<what and why, in the owner's words where possible>
 
-## Taste decisions
+## Branch
+claude/<slice>, from origin/<default>
 
-Do not argue taste in text. Have the builder produce variants behind a switch and real captures of each, then send the owner the files side by side.
+## Scope
+In:  <files, modules>
+Out: <what must not be touched, and who is working there>
+
+## Facts
+<what earlier builders found that cost effort to find: paths, flags, pitfalls>
+
+## Constraints
+<slice-specific: behaviour-preserving, no format change, ...>
+
+## Deliverables
+Draft PR. <captures / clips / renders, and how they should be made>
+
+## Done means
+<the concrete, checkable end state>
+```
+
+## Taste
+
+Do not argue taste in text. Have the builder put variants behind a switch and produce real captures of each. Send the owner the files side by side and let him choose.
 
 ## State file
 
-The project's `[state].file` is the single handover. Keep it under 60 lines and overwrite it; history lives in git. Sections, in order:
+The project's `[state].file` is the only handover. At most 60 lines. Overwrite it; history is in git. A new coordinator reads only this.
 
 ```
 # State <date>
 ## Goal
-## Done (PR, commit)
-## In flight
-## Next (ordered)
-## Open decisions for the owner
+## Done            (slice, PR, commit)
+## In flight       (slice, branch, who)
+## Next            (ordered)
+## Waiting on owner
 ## Hard-won facts
 ```
 
-Update it after every finished slice and before the owner clears your context.
+Write it before the owner clears your context, and whenever "In flight" or "Waiting on owner" changes.
 
-## Merge readiness
+## Ready to merge
 
-A pull request is ready to offer for merge when: all required checks are green, the reviewer verdict is `clean` or `minor`, and the branch contains the current default branch. If the default branch moved after CI ran, have the builder merge it in and wait for green again.
+Offer a pull request for merge only when every required check is green, the reviewer verdict is `clean` or `minor`, and the branch contains the current default branch. If the default branch moved after CI ran, have the builder merge it in and wait for green again: two green pull requests can still break the default branch together. Text-only pull requests do not need to wait for CI.

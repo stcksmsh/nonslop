@@ -1,77 +1,100 @@
 # nonslop
 
-A hands-free AI coding workflow that does not ship slop.
+A workflow for AI coding agents that does not ship slop.
 
-nonslop is a [Claude Code plugin](https://code.claude.com/docs/en/plugins/overview). It packages one way of working so every project gets the same agents, rules and gates, and each project only declares what is different about it.
+Agents write most of the code. nonslop is everything around them that keeps the result good without spending more tokens on it: static checks that run on every edit, gates that decide when a slice is really finished, and one way of coordinating the work that is the same in every project.
 
-- **Coordinator / builder / reviewer.** One coordinator session plans and dispatches. Each slice goes to a fresh `builder` subagent in its own worktree and comes back as a draft pull request. A fresh-context `reviewer` reads the diff before the owner is asked to merge.
-- **Static gates, no tokens.** Hooks check the work deterministically: a done-check that refuses to let a slice end unpushed or without a pull request, and (once vendored) slopstop for the code itself.
-- **Per-project wiring.** A tracked `.nonslop.toml` names the project's test, lint and clean commands, its state file and its machine constraints. No file, no behaviour: the plugin is inert in projects that are not wired.
+It has three layers:
 
-Status: v0 scaffold. Nothing here has been run inside Claude Code yet. See [Unverified](#unverified).
+1. **Static gates** (`tools/slopstop`, `scripts/gates.py`). No model. slopstop looks only at lines the agent added and blocks the patterns agents leave behind: new suppressions, weakened tests, stubs, silent fallbacks, narrating comments, renamed copy-paste, edits to lint or CI configuration. On top of that each project names its own lint and test commands as gates.
+2. **Workflow** (`agents/`, `skills/`, `rules/`). A coordinator plans and dispatches. Each slice goes to a fresh `builder` subagent in its own worktree and comes back as a draft pull request. A fresh-context `reviewer` reads the diff. The owner gets a list of actions, and merges.
+3. **Wiring** (`.nonslop.toml`). One tracked file per project says what is different there: its commands, which gates run, slop rule tuning, scratch directory, machine constraints. A project without the file is untouched.
+
+The checks work from any shell through `bin/nonslop`. For Claude Code the repository is also a plugin, which is how the hooks, agents and skills get loaded.
+
+Status: early. The slopstop kit was evaluated on a real project (see `eval/`). The plugin validates and the scripts are tested by hand, but the workflow has not yet been run end to end in a live session. See [Not verified yet](#not-verified-yet).
 
 ## Install
 
-Requires Python 3.11+ and Claude Code with plugin support.
+Requires Python 3.11+ and git. Optional tools are used when present: `ast-grep`, `ruff`, `jscpd`, `gitleaks`, `shellcheck`, and each language's own linter (`nonslop doctor` lists them).
+
+As a Claude Code plugin, once per Claude Code config directory:
 
 ```sh
 claude plugin marketplace add stcksmsh/nonslop
 claude plugin install nonslop@nonslop
 ```
 
-Repeat for each Claude Code config directory you use. To try a local checkout without installing:
+Or straight from a checkout, with nothing installed:
 
 ```sh
 claude --plugin-dir /path/to/nonslop
-claude plugin validate /path/to/nonslop
 ```
 
 ## Wire a project
 
-From the project root, in a Claude Code session with the plugin enabled:
-
 ```sh
-nonslop init      # creates .nonslop.toml and .claude/settings.json, ignores .claude/tmp/
-nonslop doctor    # shows what is wired
+cd my-project
+/path/to/nonslop/bin/nonslop init     # .nonslop.toml, .claude/settings.json (merged, nothing removed), .gitignore
+$EDITOR .nonslop.toml                 # fill in [commands]; see examples/kabl.nonslop.toml
+/path/to/nonslop/bin/nonslop doctor
 ```
 
-Then fill in `[commands]` in `.nonslop.toml`, review the permission lists in `.claude/settings.json`, and commit both to the default branch so every worktree sees them.
+Commit `.nonslop.toml` and `.claude/settings.json` to the default branch, so every worktree has them. Agents are blocked from editing either file afterwards.
 
-Start work with `/nonslop:coordinator`.
+Then, in Claude Code: `/nonslop:coordinator`.
+
+## Commands
+
+```sh
+nonslop check            # what an agent would be told now: slop checks on the diff, then the project's gates
+nonslop check --all      # whole repository, legacy code included (one-off audit, not a gate)
+nonslop rules            # the rules and wiring agents receive
+nonslop doctor           # what is wired, which tools are active
+nonslop slop selftest    # slopstop's own test on seeded slop
+```
 
 ## What runs when
 
-| Hook | Script | Effect |
+| Hook | Runs | Effect |
 |---|---|---|
-| `SessionStart` (startup, clear, compact) | `scripts/session_start.py` | Prints shared rules, the project's commands and constraints, and the state file into the new context |
-| `PermissionDenied` | `scripts/log_event.py` | Appends the refused call to `<scratch>/nonslop/permission-denied.jsonl` so the allow list can be tuned from data |
-| `Stop`, `SubagentStop` | `scripts/done_check.py` | On `claude/*` branches, blocks finishing until the tree is clean, the branch is pushed, a pull request exists and build output is removed. Gives up after `stop_retries` identical failures |
+| `SessionStart` (startup, clear, compact) | `scripts/session_start.py` | Rules, project commands and the state file go into the new context |
+| `SubagentStart` (builder, reviewer) | `scripts/session_start.py --subagent` | The same rules go into the subagent's context |
+| `PreToolUse` (edits, Bash) | `slop.py hook pre` | **Denies** the call when it edits a gate, adds a suppression, removes assertions or bypasses hooks |
+| `PostToolUse` (edits) | `slop.py hook post` | Findings on the edited file are fed back at once |
+| `Stop`, `SubagentStop` (builder) | `scripts/slop_stop.py`, `scripts/done_check.py` | On slice branches: full slop check, then clean tree, pushed, pull request, the project's gates, free disk. Exit 2 keeps the agent working. Then the clean command runs |
+| `PermissionDenied` | `scripts/log_event.py` | The refused call is appended to `<scratch>/nonslop/permission-denied.jsonl`, to tune allow lists from data |
+
+Both Stop checks give up after `stop_retries` identical failures, so an agent cannot loop forever. A builder that ends with a `BLOCKED` report is asking a question and is let through.
 
 ## Layout
 
 ```
-.claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
-agents/           builder.md, reviewer.md
-skills/           coordinator/
-hooks/            hooks.json
-scripts/          hook implementations (stdlib Python)
-rules/            core.md, the shared rules printed at session start
-bin/              nonslop CLI (on the Bash tool's PATH while enabled)
-templates/        files `nonslop init` copies into a project
-tools/slopstop/   static slop checks (not vendored yet)
+bin/nonslop        CLI
+scripts/           hook entry points and the gate runner (stdlib Python)
+tools/slopstop/    static slop checks, self-contained (see NONSLOP-CHANGES.md)
+rules/core.md      the shared rules every agent receives
+agents/            builder, reviewer
+skills/            coordinator, caveman, ponytail
+hooks/hooks.json   Claude Code hook wiring
+templates/         what `nonslop init` puts in a project
+examples/          a real project's .nonslop.toml
+eval/              how slopstop and a competitor were measured: reports, seeds, triage
+.claude-plugin/    plugin manifest and marketplace entry
 ```
 
-## Unverified
+## Measuring
 
-Written against the Claude Code documentation as of 2026-11-21. `claude plugin validate .` passes (one warning: no icon) and the hook scripts were exercised by hand in a throwaway repository, but nothing has run inside a live session yet. `version` is deliberately unset in `plugin.json` so installs follow the repository. Check these first:
+`eval/` holds the method and the numbers: hand-written slop seeds wired into real code for recall, and every finding over nine real agent-written pull requests triaged true / false / not-worth-acting-on for precision. Any change to a rule should be re-run against both before it is trusted. Blocking rules must stay high-precision; everything else is advisory.
 
-- `isolation: worktree` on the builder: where the worktree is created and that it branches from the remote default branch, not a stale local one.
-- `SubagentStop` passes a `cwd` inside the subagent's worktree. The done-check depends on it.
-- The permission rule patterns in `templates/settings.json` match the commands agents actually run, and an explicit allow rule is enough for `git push` under auto mode.
-- `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` stops builders from spawning their own subagents without blocking the coordinator.
+## Not verified yet
 
-## Not here yet
+- A live run: `/nonslop:coordinator` dispatching a builder and reviewing the result.
+- `isolation: worktree` on the builder: where the worktree lands and that it starts from the remote default branch.
+- That `SubagentStop` and `SubagentStart` match the plugin-scoped agent names used in `hooks/hooks.json`, and that `cwd` in their input is the subagent's worktree.
+- slopstop with `ast-grep` installed (one selftest case fails without it; see `tools/slopstop/NONSLOP-CHANGES.md`).
+- The permission lists in `templates/settings.json` under auto mode.
 
-- slopstop itself (see `tools/slopstop/README.md`).
-- The `caveman` and `ponytail` skills.
-- A license.
+## Licensing
+
+Not settled. `tools/slopstop/` has no stated license; see `THIRD_PARTY.md`. Keep this repository private until that is resolved.

@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""nonslop CLI. On the Bash tool's PATH while the plugin is enabled.
+"""nonslop: a workflow for AI coding agents that does not ship slop.
 
-  nonslop init     wire the current project (config, settings template, .gitignore)
-  nonslop doctor   show what is wired and which tools are present
+  nonslop init            wire the current project (.nonslop.toml, .claude/settings.json, .gitignore)
+  nonslop doctor          show what is wired and which tools are present
+  nonslop check [args]    what an agent would be told now: static slop checks, then the project's gates
+                          (args go to `slop check`: --all, --staged, --base <ref>, --fast, --json)
+  nonslop rules           print the rules and project wiring agents receive
+  nonslop slop <args>     run the vendored slopstop directly (selftest, doctor, check, ...)
+
+Works from any shell. Inside Claude Code it is on PATH while the plugin is enabled.
 """
 
+import json
 import shutil
 import subprocess
 import sys
@@ -13,25 +20,50 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = PLUGIN_ROOT / "templates"
-OPTIONAL_TOOLS = ["git", "gh", "ast-grep", "jscpd", "gitleaks", "shellcheck", "sccache"]
+SLOP = PLUGIN_ROOT / "tools" / "slopstop" / "slop.py"
+sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
+
+from gates import run_gates  # noqa: E402
+from nonslop_config import scratch_dir  # noqa: E402
 
 
 def project_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False
-    )
+    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         sys.exit("nonslop: not inside a git repository")
     return Path(result.stdout.strip())
 
 
-def copy_if_absent(source: Path, target: Path) -> None:
-    if target.exists():
-        print(f"  keep    {target} (already exists)")
+def load_project(root: Path) -> dict:
+    path = root / ".nonslop.toml"
+    if not path.exists():
+        sys.exit(f"nonslop: {path} missing (run `nonslop init`)")
+    with path.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def merge_settings(target: Path) -> None:
+    """Add nonslop's entries to a project's settings without removing anything already there."""
+    template = json.loads((TEMPLATES / "settings.json").read_text(encoding="utf-8"))
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(template, indent=2) + "\n", encoding="utf-8")
+        print(f"  create  {target}")
         return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
-    print(f"  create  {target}")
+    try:
+        settings = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        sys.exit(f"nonslop: {target} is not valid JSON ({error}); fix it first")
+    for key in ("extraKnownMarketplaces", "enabledPlugins", "env"):
+        merged = settings.setdefault(key, {})
+        for name, value in template[key].items():
+            merged.setdefault(name, value)
+    permissions = settings.setdefault("permissions", {})
+    for kind in ("allow", "deny"):
+        existing = permissions.setdefault(kind, [])
+        existing.extend(rule for rule in template["permissions"][kind] if rule not in existing)
+    target.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    print(f"  merge   {target}")
 
 
 def ensure_ignored(root: Path, entry: str) -> None:
@@ -44,43 +76,65 @@ def ensure_ignored(root: Path, entry: str) -> None:
     print(f"  ignore  {entry}")
 
 
-def init() -> int:
+def cmd_init(_args: list[str]) -> int:
     root = project_root()
-    copy_if_absent(TEMPLATES / "nonslop.toml", root / ".nonslop.toml")
-    copy_if_absent(TEMPLATES / "settings.json", root / ".claude" / "settings.json")
+    config = root / ".nonslop.toml"
+    if config.exists():
+        print(f"  keep    {config} (already exists)")
+    else:
+        shutil.copyfile(TEMPLATES / "nonslop.toml", config)
+        print(f"  create  {config}")
+    merge_settings(root / ".claude" / "settings.json")
     ensure_ignored(root, ".claude/tmp/")
-    print("\nNext: fill in [commands] in .nonslop.toml, review .claude/settings.json, commit both.")
+    print("\nNext: fill in [commands] in .nonslop.toml, review .claude/settings.json,")
+    print("then commit both to the default branch so every worktree sees them.")
     return 0
 
 
-def doctor() -> int:
+def cmd_doctor(_args: list[str]) -> int:
     root = project_root()
-    config_path = root / ".nonslop.toml"
-    if not config_path.exists():
-        print(f"not wired: {config_path} missing (run `nonslop init`)")
-        return 1
-    with config_path.open("rb") as handle:
-        config = tomllib.load(handle)
+    config = load_project(root)
     print(f"project   {root}")
     for name, command in config.get("commands", {}).items():
         print(f"command   {name}: {command or '(empty)'}")
-    state = config.get("state", {}).get("file")
-    if state:
+    done = config.get("done", {})
+    print(f"done      require={done.get('require', [])} run={done.get('run', [])} auto_clean={done.get('auto_clean', False)}")
+    if state := config.get("state", {}).get("file"):
         print(f"state     {state} ({'present' if (root / state).exists() else 'missing'})")
-    print(f"done      {config.get('done', {}).get('require', [])}")
-    slopstop = PLUGIN_ROOT / "tools" / "slopstop" / "slop.py"
-    print(f"slopstop  {'present' if slopstop.exists() else 'not vendored yet'}")
-    for tool in OPTIONAL_TOOLS:
-        print(f"tool      {tool}: {shutil.which(tool) or 'missing'}")
-    return 0
+    settings = root / ".claude" / "settings.json"
+    enabled = settings.exists() and "nonslop@nonslop" in settings.read_text(encoding="utf-8")
+    print(f"plugin    {'enabled in .claude/settings.json' if enabled else 'NOT enabled in .claude/settings.json'}")
+    print("--- slopstop")
+    return subprocess.run([sys.executable, str(SLOP), "doctor"], cwd=root, check=False).returncode
+
+
+def cmd_check(args: list[str]) -> int:
+    root = project_root()
+    config = load_project(root)
+    slop_failed = subprocess.run([sys.executable, str(SLOP), "check", *args], cwd=root, check=False).returncode != 0
+    failures = run_gates(config, root, scratch_dir(config, root))
+    for failure in failures:
+        print(f"nonslop: {failure}")
+    if not failures and config.get("done", {}).get("run"):
+        print("nonslop: gates passed")
+    return 1 if slop_failed or failures else 0
+
+
+def cmd_rules(_args: list[str]) -> int:
+    script = PLUGIN_ROOT / "scripts" / "session_start.py"
+    return subprocess.run([sys.executable, str(script), "--print"], check=False).returncode
+
+
+def cmd_slop(args: list[str]) -> int:
+    return subprocess.run([sys.executable, str(SLOP), *args], check=False).returncode
 
 
 def main() -> int:
-    commands = {"init": init, "doctor": doctor}
-    if len(sys.argv) != 2 or sys.argv[1] not in commands:
+    commands = {"init": cmd_init, "doctor": cmd_doctor, "check": cmd_check, "rules": cmd_rules, "slop": cmd_slop}
+    if len(sys.argv) < 2 or sys.argv[1] not in commands:
         print(__doc__.strip())
         return 2
-    return commands[sys.argv[1]]()
+    return commands[sys.argv[1]](sys.argv[2:])
 
 
 if __name__ == "__main__":
