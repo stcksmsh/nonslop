@@ -97,4 +97,5 @@ eval/              how slopstop and a competitor were measured: reports, seeds, 
 
 ## Licensing
 
-Not settled. `tools/slopstop/` has no stated license; see `THIRD_PARTY.md`. Keep this repository private until that is resolved.
+No license has been chosen yet. Until one is added, the code is published but not licensed for reuse.
+The two vendored skills keep their own MIT licenses; see `THIRD_PARTY.md`.
