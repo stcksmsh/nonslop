@@ -336,8 +336,9 @@ DEF_NAME = re.compile(
     r"(?:mut\s+)?([A-Za-z_][A-Za-z0-9_]*)"
 )
 BAD_NAME = re.compile(
-    r"(_v\d+|[a-z]V\d+|_(old|fixed|updated|improved|enhanced|better|copy|backup|tmp\d|temp\d|wip)"
-    r"|[a-z](Fixed|Updated|Improved|Enhanced|Better|Copy|Backup))$"
+    # "backup" is not here: it is a domain noun far more often than a hedge (`delete_backup`, `TrayBackup`).
+    r"(_v\d+|[a-z]V\d+|_(old|fixed|updated|improved|enhanced|better|copy|tmp\d|temp\d|wip)"
+    r"|[a-z](Fixed|Updated|Improved|Enhanced|Better|Copy))$"
     r"|^(enhanced|improved|better|updated|robust|advanced|optimized|refactored)_"
 )
 BAD_NAME_OK = re.compile(r"^$")  # (variants of an existing fn, e.g. `render_new` next to `render`, are caught in semantic.py)
