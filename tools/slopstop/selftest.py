@@ -360,14 +360,14 @@ def main(kit: Path) -> int:
         for f in found:
             by_file.setdefault(f.file, set()).add(f.rule)
 
-        def tools_ok(c):
-            return all(any(slop.have(x) for x in t.split("|")) for t in c["tools"])
+        def missing_tools(c):
+            return [t for t in c["tools"] if not any(slop.have(x) for x in t.split("|"))]
 
         for c in CASES:
             got = by_file.get(c["path"], set())
-            if not tools_ok(c):
+            if absent := missing_tools(c):
                 skips += 1
-                print(f"SKIP {c['name']} (missing {c['tools']})")
+                print(f"SKIP {c['name']} (missing {absent})")
                 continue
             missing = c["want"] - got
             bad = got if c.get("deny_all") else set()

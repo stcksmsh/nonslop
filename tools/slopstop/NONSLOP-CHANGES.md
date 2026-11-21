@@ -24,5 +24,12 @@ split back out into its own repository.
 
 25 passed, 1 failed, 13 skipped on a machine without `ast-grep`, both before and after the change
 above. The failure is `rust: semantic slop`, which expects the ast-grep rule `rs-empty-fn` and is not
-skipped when ast-grep is missing. It should pass with ast-grep installed; that has not been confirmed
-here.
+skipped when ast-grep is missing.
+
+2026-11-21, with ast-grep 0.51.3, ruff 0.17.6 and shellcheck 0.11.0 installed: 36 passed, 0 failed,
+3 skipped (detekt, biome, cppcheck missing).
+
+## 2026-11-21: selftest names only the missing tools
+
+A skipped case printed every tool it needs, so `SKIP typescript ... (missing ['ast-grep', 'biome'])`
+appeared with ast-grep installed. It now lists only the tools that are absent.
