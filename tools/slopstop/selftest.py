@@ -300,6 +300,8 @@ CASES = [
     dict(name="gate: protected file", path="clippy.toml", tools=[],
          base="cognitive-complexity-threshold = 20\n", new="cognitive-complexity-threshold = 200\n",
          want={"gate-tampered"}),
+    dict(name="gate: new untracked CI workflow", path=".github/workflows/extra.yml", tools=[],
+         base=None, new="on: push\n", want={"gate-tampered"}),
     dict(name="secret in code", path="src/keys.py", tools=[],
          base="A = 1\n", new="A = 1\nTOKEN = \"ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8" + "\"\n",
          want={"secret"}),
@@ -341,7 +343,8 @@ def main(kit: Path) -> int:
         for c in CASES:
             p = root / c["path"]
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(c["base"])
+            if c["base"] is not None:  # None: the file is new and stays untracked
+                p.write_text(c["base"])
         (root / "lib").mkdir()
         (root / "lib" / "stats.py").write_text(DUP_BASE)
         git(root, "add", "-A")
@@ -462,6 +465,11 @@ def main(kit: Path) -> int:
         git(root, "checkout", "-q", "-b", "feature")
         rc, _, err = run_hook("stop", {"cwd": str(root), "session_id": "s2"})
         check("stop on clean feature branch passes", rc == 0, err[:200])
+
+        r = subprocess.run([sys.executable, str(kit / "slop.py"), "check", "--base", "no-such-ref"],
+                           capture_output=True, text=True, cwd=root)
+        check("check with an unknown base fails instead of reporting clean",
+              r.returncode not in (0, 2) and "failed" in r.stderr, (r.stdout + r.stderr)[:200])
 
     print(f"\n{passes} passed, {fails} failed, {skips} skipped")
     return 1 if fails else 0
