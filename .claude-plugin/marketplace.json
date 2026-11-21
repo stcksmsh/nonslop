@@ -1,0 +1,14 @@
+{
+  "name": "nonslop",
+  "owner": {
+    "name": "Kosta Vukicevic",
+    "url": "https://github.com/stcksmsh"
+  },
+  "plugins": [
+    {
+      "name": "nonslop",
+      "source": "./",
+      "description": "Coordinator, builder and reviewer agents with static quality gates and per-project wiring."
+    }
+  ]
+}

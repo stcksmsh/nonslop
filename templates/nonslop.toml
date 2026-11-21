@@ -1,0 +1,31 @@
+# nonslop per-project wiring. Copied to <project>/.nonslop.toml by `nonslop init`.
+# A project without this file gets no nonslop behaviour.
+
+[commands]
+# Exact commands agents must use. Add or rename keys freely; all are shown to agents.
+test = ""
+lint = ""
+clean = ""
+
+[state]
+# The single handover file the coordinator keeps. Printed at every session start.
+file = "docs/STATE.md"
+
+[done]
+# Checked when an agent on a matching branch tries to stop.
+branch_prefix = "claude/"
+require = ["clean_tree", "pushed", "pr", "cleaned"]
+# Paths that must not exist when a slice ends (build output).
+clean_paths = []
+# Refuse to finish below this much free disk. 0 disables.
+min_free_gb = 0
+# Identical failures in a row before the agent is allowed to stop anyway.
+stop_retries = 2
+
+[env]
+# Project-relative scratch root. Hook logs go to <scratch>/nonslop/.
+scratch = ".claude/tmp"
+# Set to a null sink name if agents must never use the default audio output.
+# audio_sink = ""
+# Extra one-line constraints printed to every session.
+notes = []
