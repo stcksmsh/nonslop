@@ -1,11 +1,13 @@
 {
   "name": "nonslop",
   "displayName": "nonslop",
+  "version": "0.1.0",
   "description": "Hands-free AI coding workflow that does not ship slop: coordinator, builder and reviewer agents, static no-token quality gates, per-project wiring.",
   "author": {
     "name": "Kosta Vukicevic",
     "url": "https://github.com/stcksmsh"
   },
   "repository": "https://github.com/stcksmsh/nonslop",
+  "license": "MIT OR Apache-2.0",
   "keywords": ["workflow", "agents", "code-quality", "hooks"]
 }

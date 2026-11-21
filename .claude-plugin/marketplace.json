@@ -1,5 +1,6 @@
 {
   "name": "nonslop",
+  "description": "nonslop: a workflow plugin for AI coding agents with static quality gates.",
   "owner": {
     "name": "Kosta Vukicevic",
     "url": "https://github.com/stcksmsh"

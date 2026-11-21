@@ -1,15 +1,4 @@
 {
-  "extraKnownMarketplaces": {
-    "nonslop": {
-      "source": {
-        "source": "github",
-        "repo": "stcksmsh/nonslop"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "nonslop@nonslop": true
-  },
   "env": {
     "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
   },

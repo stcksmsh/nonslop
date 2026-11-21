@@ -54,7 +54,7 @@ def merge_settings(target: Path) -> None:
         settings = json.loads(target.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         sys.exit(f"nonslop: {target} is not valid JSON ({error}); fix it first")
-    for key in ("extraKnownMarketplaces", "enabledPlugins", "env"):
+    for key in ("env",):
         merged = settings.setdefault(key, {})
         for name, value in template[key].items():
             merged.setdefault(name, value)
@@ -91,6 +91,27 @@ def cmd_init(_args: list[str]) -> int:
     return 0
 
 
+def plugin_status() -> str:
+    """Which nonslop Claude Code has installed, next to the version of this copy."""
+    manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    here = f"this copy {manifest['version']}"
+    claude = shutil.which("claude")
+    if claude is None:
+        return f"unknown (claude CLI not on PATH); {here}"
+    result = subprocess.run([claude, "plugin", "list", "--json"], capture_output=True, text=True, check=False)
+    try:
+        plugins = json.loads(result.stdout) if result.returncode == 0 else None
+    except json.JSONDecodeError:
+        plugins = None
+    if plugins is None:
+        return f"unknown (`claude plugin list --json` failed); {here}"
+    for plugin in plugins:
+        if plugin.get("id", "").startswith("nonslop@"):
+            return (f"{plugin['id']} {plugin.get('version')} scope={plugin.get('scope')} "
+                    f"enabled={plugin.get('enabled')}; {here}")
+    return f"NOT installed (see README 'Install'); {here}"
+
+
 def cmd_doctor(_args: list[str]) -> int:
     root = project_root()
     config = load_project(root)
@@ -101,10 +122,9 @@ def cmd_doctor(_args: list[str]) -> int:
     print(f"done      require={done.get('require', [])} run={done.get('run', [])} auto_clean={done.get('auto_clean', False)}")
     if state := config.get("state", {}).get("file"):
         print(f"state     {state} ({'present' if (root / state).exists() else 'missing'})")
-    settings = root / ".claude" / "settings.json"
-    enabled = settings.exists() and "nonslop@nonslop" in settings.read_text(encoding="utf-8")
-    print(f"plugin    {'enabled in .claude/settings.json' if enabled else 'NOT enabled in .claude/settings.json'}")
-    print("--- slopstop")
+    print(f"plugin    {plugin_status()}")
+    # Flush first: slopstop writes straight to the terminal and would land above this heading.
+    print("--- slopstop", flush=True)
     return subprocess.run([sys.executable, str(SLOP), "doctor"], cwd=root, check=False).returncode
 
 

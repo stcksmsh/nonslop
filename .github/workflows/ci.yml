@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Optional tools slopstop uses when present; installed so their selftest cases run instead of skipping.
+      - name: Install checkers
+        run: pip install ast-grep-cli ruff shellcheck-py
+
+      - name: Scripts compile
+        # compileall skips files without a .py suffix, so the CLI is compiled on its own.
+        run: |
+          python -m compileall -q scripts tools
+          python -m py_compile bin/nonslop
+
+      - name: Manifests are valid JSON
+        run: |
+          python -m json.tool .claude-plugin/plugin.json > /dev/null
+          python -m json.tool .claude-plugin/marketplace.json > /dev/null
+          python -m json.tool hooks/hooks.json > /dev/null
+          python -m json.tool templates/settings.json > /dev/null
+
+      - name: slopstop selftest
+        run: python bin/nonslop slop selftest
