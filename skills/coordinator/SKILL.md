@@ -47,7 +47,7 @@ The builder starts with this prompt and the session rules, nothing else. Write i
 <what and why, in the owner's words where possible>
 
 ## Branch
-claude/<slice>, from origin/<default>
+<branch prefix from the session rules><slice>, from origin/<default>
 
 ## Scope
 In:  <files, modules>

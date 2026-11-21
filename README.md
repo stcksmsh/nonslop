@@ -43,7 +43,7 @@ Restart Claude Code afterwards. Updates reach every wired project at once. `nons
 
 ```sh
 cd my-project
-/path/to/nonslop/bin/nonslop init     # .nonslop.toml, .claude/settings.json (permissions merged, nothing removed), .gitignore
+/path/to/nonslop/bin/nonslop init     # .nonslop.toml, .claude/settings.json (permissions merged; only retired allow rules removed), .gitignore
 $EDITOR .nonslop.toml                 # fill in [commands]; see examples/kabl.nonslop.toml
 /path/to/nonslop/bin/nonslop doctor   # wiring, tools, and whether the plugin is installed
 ```
