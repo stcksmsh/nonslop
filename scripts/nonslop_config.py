@@ -30,11 +30,16 @@ def start_dir(hook_input: dict) -> Path:
 
 
 def find_config(start: Path) -> Path | None:
-    """Walk up from `start` to the nearest .nonslop.toml."""
+    """Walk up from `start` to the nearest .nonslop.toml, but not out of the git repository.
+
+    A repository nested in a wired one (a scratch clone, a vendored repo) is not wired by its parent.
+    """
     for directory in (start, *start.parents):
         candidate = directory / CONFIG_NAME
         if candidate.is_file():
             return candidate
+        if (directory / ".git").exists():  # a directory in worktrees, a file in linked worktrees
+            return None
     return None
 
 
