@@ -34,6 +34,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/merge_guard.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [

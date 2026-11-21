@@ -59,7 +59,6 @@
       "Bash(nonslop:*)"
     ],
     "deny": [
-      "Bash(gh pr merge:*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git branch -D:*)",

@@ -61,6 +61,7 @@ nonslop slop selftest    # slopstop's own test on seeded slop
 | `SessionStart` (startup, clear, compact) | `scripts/session_start.py` | Rules, project commands and the state file go into the new context |
 | `SubagentStart` (builder, reviewer) | `scripts/session_start.py --subagent` | The same rules go into the subagent's context |
 | `PreToolUse` (edits, Bash) | `slop.py hook pre` | **Denies** the call when it edits a gate, adds a suppression, removes assertions or bypasses hooks |
+| `PreToolUse` (Bash) | `scripts/merge_guard.py` | **Denies** `gh pr merge` inside a subagent. The coordinator may still merge on the owner's word |
 | `PostToolUse` (edits) | `slop.py hook post` | Findings on the edited file are fed back at once |
 | `Stop`, `SubagentStop` (builder) | `scripts/slop_stop.py`, `scripts/done_check.py` | On slice branches: full slop check, then clean tree, pushed, pull request, the project's gates, free disk. Exit 2 keeps the agent working. Then the clean command runs |
 | `PermissionDenied` | `scripts/log_event.py` | The refused call is appended to `<scratch>/nonslop/permission-denied.jsonl`, to tune allow lists from data |
