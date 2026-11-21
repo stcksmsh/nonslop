@@ -33,3 +33,16 @@ skipped when ast-grep is missing.
 
 A skipped case printed every tool it needs, so `SKIP typescript ... (missing ['ast-grep', 'biome'])`
 appeared with ast-grep installed. It now lists only the tools that are absent.
+
+## 2026-11-21: fixes from the aegis trial
+
+`slop.py` and `semantic.py`:
+
+- `BAD_NAME` and the `variant-of-existing` suffixes no longer contain `backup`: in a backup app it is the
+  domain noun, and all four blocking `versioned-name` findings in the trial were false.
+- `collect_diff` exits with git's error when `git diff` fails, instead of returning no changes (an
+  unknown `--base` printed `slopstop: clean`).
+- Untracked files carry the diff's base, so a new protected file is flagged `gate-tampered`.
+- ruff runs with `--no-cache`.
+
+Selftest after these: 38 passed, 0 failed, 3 skipped (detekt, biome, cppcheck missing).
