@@ -1,7 +1,7 @@
 {
   "name": "nonslop",
   "displayName": "nonslop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Hands-free AI coding workflow that does not ship slop: coordinator, builder and reviewer agents, static no-token quality gates, per-project wiring.",
   "author": {
     "name": "Kosta Vukicevic",

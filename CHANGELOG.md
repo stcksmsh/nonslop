@@ -5,6 +5,12 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.1.2
+
+- The hooks look for `.nonslop.toml` only inside the current git repository. A repository nested in a
+  wired one (a scratch clone under `.claude/tmp/`, a vendored repo) was treated as wired by its parent and
+  got the parent's rules and commands. slopstop already stopped at the repository root.
+
 ## 0.1.1
 
 - The Stop checks skip a session that has changed nothing since it started. Before, a session that only
