@@ -18,29 +18,37 @@ Status: early. The slopstop kit was evaluated on a real project (see `eval/`). T
 
 Requires Python 3.11+ and git. Optional tools are used when present: `ast-grep`, `ruff`, `jscpd`, `gitleaks`, `shellcheck`, and each language's own linter (`nonslop doctor` lists them).
 
-As a Claude Code plugin, once per Claude Code config directory:
+Install the plugin once for your user, per Claude Code config directory. It then acts in every project that has a `.nonslop.toml` and stays silent everywhere else:
 
 ```sh
-claude plugin marketplace add stcksmsh/nonslop
-claude plugin install nonslop@nonslop
+claude plugin install nonslop --marketplace stcksmsh/nonslop --scope user
 ```
 
-Or straight from a checkout, with nothing installed:
+Or straight from a checkout, with nothing installed (for working on nonslop itself):
 
 ```sh
 claude --plugin-dir /path/to/nonslop
 ```
 
+## Update
+
+```sh
+claude plugin marketplace update nonslop
+claude plugin update nonslop@nonslop
+```
+
+Restart Claude Code afterwards. Updates reach every wired project at once. `nonslop doctor` shows the installed version next to the version of the copy it runs from. Changes that need a project's own files to change are listed in `CHANGELOG.md` under "Upgrade".
+
 ## Wire a project
 
 ```sh
 cd my-project
-/path/to/nonslop/bin/nonslop init     # .nonslop.toml, .claude/settings.json (merged, nothing removed), .gitignore
+/path/to/nonslop/bin/nonslop init     # .nonslop.toml, .claude/settings.json (permissions merged, nothing removed), .gitignore
 $EDITOR .nonslop.toml                 # fill in [commands]; see examples/kabl.nonslop.toml
-/path/to/nonslop/bin/nonslop doctor
+/path/to/nonslop/bin/nonslop doctor   # wiring, tools, and whether the plugin is installed
 ```
 
-Commit `.nonslop.toml` and `.claude/settings.json` to the default branch, so every worktree has them. Agents are blocked from editing either file afterwards.
+Commit `.nonslop.toml` and `.claude/settings.json` to the default branch, so every worktree has them. Agents are blocked from editing either file afterwards. The project's settings carry only permissions; the plugin itself comes from your user install.
 
 Then, in Claude Code: `/nonslop:coordinator`.
 
@@ -98,5 +106,5 @@ eval/              how slopstop and a competitor were measured: reports, seeds, 
 
 ## Licensing
 
-No license has been chosen yet. Until one is added, the code is published but not licensed for reuse.
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
 The two vendored skills keep their own MIT licenses; see `THIRD_PARTY.md`.
