@@ -24,10 +24,12 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gates import run_gates  # noqa: E402
+from log_event import append  # noqa: E402
 from nonslop_config import load_config, read_hook_input, scratch_dir, start_dir, unchanged_since_start  # noqa: E402
 
 DEFAULT_REQUIRE = ["clean_tree", "pushed", "pr"]
@@ -128,20 +130,31 @@ def auto_clean(config: dict, cwd: Path) -> None:
 
 
 def main() -> int:
+    start = time.monotonic()
     hook_input = read_hook_input()
-    if (hook_input.get("last_assistant_message") or "").lstrip().startswith("BLOCKED"):
-        return 0
     cwd = start_dir(hook_input)
     loaded = load_config(cwd)
     if loaded is None:
         return 0
     config, root = loaded
-    if unchanged_since_start(config, root, cwd, hook_input.get("session_id", "")):
+    session = hook_input.get("session_id", "")
+
+    def log(decision: str, **extra: object) -> None:
+        ms = int((time.monotonic() - start) * 1000)
+        append(config, root, "done-check", {"session": session, "agent": hook_input.get("agent_id", ""),
+                                            "decision": decision, "ms": ms, **extra})
+
+    if (hook_input.get("last_assistant_message") or "").lstrip().startswith("BLOCKED"):
+        log("skip", reason="BLOCKED report")
+        return 0
+    if unchanged_since_start(config, root, cwd, session):
+        log("skip", reason="unchanged")
         return 0
     done = config.get("done", {})
 
     code, branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
     if code != 0 or not branch.startswith(done.get("branch_prefix", "claude/")):
+        log("skip", reason="not a slice branch", branch=branch)
         return 0
 
     log_dir = scratch_dir(config, root)
@@ -152,9 +165,12 @@ def main() -> int:
     if not failures:
         clear_state(state_file, key)
         auto_clean(config, cwd)
+        log("pass", branch=branch)
         return 0
     if retries_exhausted(state_file, key, failures, done.get("stop_retries", 2)):
+        log("released", branch=branch, failures=failures)
         return 0
+    log("fail", branch=branch, failures=failures)
 
     print("nonslop done-check: slice is not finished:", file=sys.stderr)
     for problem in failures:

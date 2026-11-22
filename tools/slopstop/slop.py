@@ -983,32 +983,57 @@ def opted_in(root: Path) -> bool:
     """Hooks installed user-wide only act in repos that opt in with a `.slop.toml` (or SLOP_ALL=1)."""
     return config_file(root) is not None or os.environ.get("SLOP_ALL") == "1"
 
+def log_hits(root: Path, inp: dict, event: str, t0: float, decision: str,
+             hits: list[tuple[str, str, str, str]]) -> None:
+    """Append one line per finding (rule, severity, decision, file) plus one timed line for the whole
+    hook call to .git/slopstop/hits.jsonl, the raw data for `nonslop stats`. A failed write must never
+    change what the hook decides, so it is dropped."""
+    if not git_root(root):
+        return
+    base = {"ts": round(time.time(), 3), "session": inp.get("session_id", ""), "event": event}
+    recs = [{**base, "rule": r, "severity": s, "decision": d, "file": f} for r, s, d, f in hits]
+    recs.append({**base, "rule": None, "decision": decision, "ms": int((time.monotonic() - t0) * 1000)})
+    try:
+        with state_file(root).with_name("hits.jsonl").open("a") as fh:
+            fh.write("".join(json.dumps(r) + "\n" for r in recs))
+    except OSError:
+        pass
+
 def hook_pre(inp: dict) -> int:
+    t0 = time.monotonic()
     root = hook_root(inp)
     if not opted_in(root):
         return 0
-    cfg = load_config(root)
+    hit = pre_verdict(inp, root, load_config(root))
+    if hit:
+        deny(hit[2])
+    log_hits(root, inp, "pre", t0, "deny" if hit else "pass",
+             [(hit[0], "block", "deny", hit[1])] if hit else [])
+    return 0
+
+def pre_verdict(inp: dict, root: Path, cfg: dict) -> tuple[str, str, str] | None:
+    """(rule, file, reason) when the proposed tool call must be denied."""
     tool = inp.get("tool_name", "")
     if tool == "Bash":
         cmd = (inp.get("tool_input") or {}).get("command", "")
         if BASH_BYPASS.search(cmd):
-            return deny("bypassing git hooks/gates is not allowed; fix the findings instead")
+            return "gate-bypass", "", "bypassing git hooks/gates is not allowed; fix the findings instead"
         if BASH_WRITE.search(cmd):
             for tok in re.findall(r"[\w./@*-]+", cmd):
                 if "/" in tok or "." in tok:
                     t = tok.lstrip("./")
                     if t and is_protected(t, cfg):
-                        return deny(f"shell write touching protected gate file `{t}`; ask the user")
-        return 0
+                        return "gate-tampered", t, f"shell write touching protected gate file `{t}`; ask the user"
+        return None
     fp, old, new = proposed_texts(inp)
     if not fp:
-        return 0
+        return None
     p = rel(root, fp)
     if is_protected(p, cfg):
-        return deny(f"`{p}` is a lint/CI/hook gate; only the user edits it. Fix the code instead.")
+        return "gate-tampered", p, f"`{p}` is a lint/CI/hook gate; only the user edits it. Fix the code instead."
     name = Path(p).name
     if name in MANIFEST_LINT and lint_lines(name, old) != lint_lines(name, new):
-        return deny(f"lint settings in `{name}` are a gate; only the user edits them")
+        return "gate-tampered", p, f"lint settings in `{name}` are a gate; only the user edits them"
     if not cfg["allow_suppressions"] and lang_of(p):
         allowed = tuple(cfg.get("allow_suppress", ()))
         def sup(l: str) -> bool:
@@ -1017,31 +1042,37 @@ def hook_pre(inp: dict) -> int:
         if n_new > n_old:
             olds = set(old.splitlines())
             m = next((l.strip() for l in new.splitlines() if sup(l) and l not in olds), "?")
-            return deny(f"adding a suppression/skip (`{m[:60]}`) needs user approval. Fix the cause, or stop and ask.")
+            return ("suppression-added", p,
+                    f"adding a suppression/skip (`{m[:60]}`) needs user approval. Fix the cause, or stop and ask.")
     if is_test_path(p) and lang_of(p):
         a_new, a_old = len(ASSERT.findall(new)), len(ASSERT.findall(old))
         if a_new < a_old:
-            return deny("this edit removes test assertions. Change the code to satisfy the test, or ask the user.")
-    return 0
+            return ("test-weakened", p,
+                    "this edit removes test assertions. Change the code to satisfy the test, or ask the user.")
+    return None
 
 def hook_post(inp: dict) -> int:
+    t0 = time.monotonic()
     root = hook_root(inp)
     if not opted_in(root):
         return 0
-    cfg = load_config(root)
+    fs = post_findings(inp, root, load_config(root))
+    log_hits(root, inp, "post", t0, "warn" if fs else "pass", [(f.rule, f.sev, "warn", f.file) for f in fs])
+    return 0
+
+def post_findings(inp: dict, root: Path, cfg: dict) -> list[Finding]:
     fp, _, _ = proposed_texts(inp)
     if not fp or not git_root(root):
-        return 0
+        return []
     p = rel(root, fp)
     if excluded(p, cfg) or not (root / p).is_file():
-        return 0
+        return []
     diffs = collect_diff(root, "base", resolve_base(root, cfg), only=[p])
     fs = run_checks(root, diffs, cfg, fast=True)
-    if not fs:
-        return 0
-    msg = fmt(fs, cfg, f"slopstop: {len(fs)} issue(s) in your edit of {p}. Fix now; Stop will block on these.")
-    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": msg}}))
-    return 0
+    if fs:
+        msg = fmt(fs, cfg, f"slopstop: {len(fs)} issue(s) in your edit of {p}. Fix now; Stop will block on these.")
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": msg}}))
+    return fs
 
 def state_file(root: Path) -> Path:
     gd = sh(["git", "rev-parse", "--git-dir"], root).stdout.strip() or ".git"
@@ -1050,10 +1081,18 @@ def state_file(root: Path) -> Path:
     return d / "stop.json"
 
 def hook_stop(inp: dict) -> int:
+    t0 = time.monotonic()
     root = hook_root(inp)
     if not git_root(root) or not opted_in(root):
         return 0
-    cfg = load_config(root)
+    rc, shown = stop_verdict(inp, root, load_config(root))
+    decision = "block" if rc == 2 else "warn" if shown else "pass"
+    log_hits(root, inp, "stop", t0, decision,
+             [(f.rule, f.sev, "block" if rc == 2 and f.sev == "block" else "warn", f.file) for f in shown])
+    return rc
+
+def stop_verdict(inp: dict, root: Path, cfg: dict) -> tuple[int, list[Finding]]:
+    """Exit code for the Stop hook and the findings it showed (none when it stayed silent)."""
     fs = run_checks(root, collect_diff(root, "base", resolve_base(root, cfg)), cfg, fast=False)
     sf = state_file(root)
     try:
@@ -1068,7 +1107,7 @@ def hook_stop(inp: dict) -> int:
     active = bool(inp.get("stop_hook_active"))
     if not fs or (not blocking and active):
         sf.write_text(json.dumps({**st, "strikes": 0, "fps": []}))
-        return 0
+        return 0, []
     if active and set(fps) <= set(st.get("fps", [])):
         st["strikes"] = st.get("strikes", 0) + 1
     else:
@@ -1077,13 +1116,13 @@ def hook_stop(inp: dict) -> int:
     sf.write_text(json.dumps(st))
     if st["strikes"] >= cfg["stop_retries"]:
         print(json.dumps({"systemMessage": fmt(fs, cfg, "slopstop: agent could not clear these; review manually:")}))
-        return 0
+        return 0, fs
     head = (f"slopstop: {len(blocking)} blocking issue(s) in this change. Fix them before finishing. "
             "Do not suppress, skip tests or edit lint config; if a finding is wrong, say so to the user.")
     if not blocking:
         head = "slopstop: advisory findings in this change. Fix what's real; if all are intentional, just finish."
     print(fmt(fs, cfg, head), file=sys.stderr)
-    return 2
+    return 2, fs
 
 # --------------------------------------------------------------------------- CLI commands
 
