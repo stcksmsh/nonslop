@@ -132,21 +132,28 @@ def auto_clean(config: dict, cwd: Path) -> None:
 def main() -> int:
     start = time.monotonic()
     hook_input = read_hook_input()
+    session = hook_input.get("session_id", "")
     cwd = start_dir(hook_input)
+    if (hook_input.get("last_assistant_message") or "").lstrip().startswith("BLOCKED"):
+        # A BLOCKED report passes whatever the config says; only the log needs it.
+        try:
+            loaded = load_config(cwd)
+        except (OSError, ValueError):
+            loaded = None
+        if loaded is not None:
+            append(*loaded, "done-check", {"session": session, "agent": hook_input.get("agent_id", ""),
+                                           "decision": "skip", "reason": "BLOCKED report"})
+        return 0
     loaded = load_config(cwd)
     if loaded is None:
         return 0
     config, root = loaded
-    session = hook_input.get("session_id", "")
 
     def log(decision: str, **extra: object) -> None:
         ms = int((time.monotonic() - start) * 1000)
         append(config, root, "done-check", {"session": session, "agent": hook_input.get("agent_id", ""),
                                             "decision": decision, "ms": ms, **extra})
 
-    if (hook_input.get("last_assistant_message") or "").lstrip().startswith("BLOCKED"):
-        log("skip", reason="BLOCKED report")
-        return 0
     if unchanged_since_start(config, root, cwd, session):
         log("skip", reason="unchanged")
         return 0

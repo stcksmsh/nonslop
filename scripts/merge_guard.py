@@ -27,10 +27,14 @@ def main() -> int:
     if loaded is None:
         return 0
     command = (hook_input.get("tool_input") or {}).get("command", "")
-    if not MERGE.search(command):
+    match = MERGE.search(command)
+    if not match:
         return 0
+    # Log only what matched: the rest of a gh api call can carry bodies or tokens.
+    hit = match[0]
+    matched = hit[hit.rindex("/pulls/") + 1:] if "/pulls/" in hit else " ".join(hit.split())
     append(*loaded, "merge-guard", {"session": hook_input.get("session_id", ""),
-                                    "agent": hook_input["agent_id"], "decision": "deny", "command": command})
+                                    "agent": hook_input["agent_id"], "decision": "deny", "matched": matched})
     print(json.dumps({"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",

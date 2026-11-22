@@ -21,9 +21,10 @@ def append(config: dict, root: Path, event: str, record: dict) -> None:
     change what the calling hook decides, so the failure is dropped."""
     record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event, **record}
     try:
+        line = json.dumps(record, ensure_ascii=False) + "\n"
         with (scratch_dir(config, root) / f"{event}.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except OSError:
+            handle.write(line)
+    except (OSError, TypeError, ValueError):
         pass
 
 
