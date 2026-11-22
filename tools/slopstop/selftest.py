@@ -409,6 +409,23 @@ def main(kit: Path) -> int:
         rc, out, _ = run_hook("pre", {"cwd": str(root), "tool_name": "Edit", "tool_input": {
             "file_path": str(root / "clippy.toml"), "old_string": "20", "new_string": "200"}})
         check("pre denies gate edit", '"deny"' in out, out)
+
+        def hits():
+            try:
+                lines = (root / ".git/slopstop/hits.jsonl").read_text().splitlines()
+            except OSError:
+                return []
+            return [json.loads(l) for l in lines]
+
+        run_hook("pre", {"cwd": str(root), "session_id": "log1", "tool_name": "Edit", "tool_input": {
+            "file_path": str(root / "clippy.toml"), "old_string": "20", "new_string": "200"}})
+        recs = [h for h in hits() if h.get("session") == "log1"]
+        check("pre deny logs a finding record",
+              any(h["event"] == "pre" and h["rule"] == "gate-tampered" and h["decision"] == "deny"
+                  and h["file"] == "clippy.toml" for h in recs), str(recs))
+        check("pre deny logs a timed call record",
+              any(h["rule"] is None and h["decision"] == "deny" and isinstance(h.get("ms"), int) for h in recs),
+              str(recs))
         rc, out, _ = run_hook("pre", {"cwd": str(root), "tool_name": "Edit", "tool_input": {
             "file_path": str(root / "clippy.toml"), "old_string": "20", "new_string": "200"}}, optin=False)
         check("user-wide hooks stay silent in a repo without .slop.toml", out.strip() == "" and rc == 0, out)
@@ -455,6 +472,10 @@ def main(kit: Path) -> int:
         rc, out, _ = run_hook("post", {"cwd": str(root), "tool_name": "Write",
                                        "tool_input": {"file_path": str(root / "src/filter.rs"), "content": ""}})
         check("post silent on clean file", out.strip() == "", out)
+        last = (hits() or [{}])[-1]
+        check("passing post logs a pass call record",
+              last.get("event") == "post" and last.get("rule", "") is None and last.get("decision") == "pass"
+              and isinstance(last.get("ms"), int), str(last))
 
         payload = {"cwd": str(root), "session_id": "s1", "stop_hook_active": False}
         rc, _, err = run_hook("stop", payload)

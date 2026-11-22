@@ -46,3 +46,20 @@ appeared with ast-grep installed. It now lists only the tools that are absent.
 - ruff runs with `--no-cache`.
 
 Selftest after these: 38 passed, 0 failed, 3 skipped (detekt, biome, cppcheck missing).
+
+## 2026-11-22: hit log with timing
+
+`slop.py` and `selftest.py`:
+
+- New `log_hits()` appends to `.git/slopstop/hits.jsonl` (next to `stop.json`). Each hook call in an
+  opted-in git repository writes one record per finding it reported (`ts, session, event, rule, severity,
+  decision, file`) and one record for the call itself (`rule: null, decision, ms`), also when nothing
+  fired. `decision` is `deny` or `pass` for pre, `warn` or `pass` for post, `block`, `warn` or `pass` for
+  stop. A failed write (`OSError`) is dropped; it never changes the hook's outcome.
+- To give each call one exit point to time, the bodies of `hook_pre`, `hook_post` and `hook_stop` moved
+  into `pre_verdict`, `post_findings` and `stop_verdict`. Their checks and outputs are unchanged; pre
+  denials now carry a rule name (`gate-bypass`, `gate-tampered`, `suppression-added`, `test-weakened`).
+- Selftest: a denied pre call logs a finding and a timed call record; a passing post call logs a `pass`
+  call record. All three assertions fail on the previous `slop.py`.
+
+Selftest after these: 41 passed, 0 failed, 3 skipped (detekt, biome, cppcheck missing).

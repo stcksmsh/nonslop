@@ -5,6 +5,14 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.1.4
+
+- slopstop logs every hook call with its wall time, and every finding it reports with rule, severity and
+  decision, to `.git/slopstop/hits.jsonl`. `slop_stop.py`, `done_check.py` and `merge_guard.py` log
+  their decisions (skip and why, pass, fail with the failures, deny) to
+  `<scratch>/nonslop/{slop-stop,done-check,merge-guard}.jsonl`. This is the data for a later
+  `nonslop stats`. No gate decides differently.
+
 ## 0.1.3
 
 - The session rules state the project's slice branch prefix (`[done].branch_prefix`), and the coordinator

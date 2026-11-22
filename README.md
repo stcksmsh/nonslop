@@ -76,6 +76,8 @@ nonslop slop selftest    # slopstop's own test on seeded slop
 
 Both Stop checks give up after `stop_retries` identical failures, so an agent cannot loop forever. A builder that ends with a `BLOCKED` report is asking a question and is let through.
 
+Every slopstop hook call, and each finding it reports, is logged with its timing to `.git/slopstop/hits.jsonl`; the Stop checks and the merge guard log their decisions to `<scratch>/nonslop/{slop-stop,done-check,merge-guard}.jsonl`.
+
 ## Layout
 
 ```
