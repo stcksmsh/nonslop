@@ -1,0 +1,47 @@
+# nonslop per-project wiring. Copied to <project>/.nonslop.toml by `nonslop init`.
+# A project without this file gets no nonslop behaviour at all.
+# Agents are blocked from editing this file; only the owner changes it.
+
+[commands]
+# The exact commands agents must use. Add or rename keys freely; every non-empty one is shown to agents.
+# No shell syntax (pipes, &&, VAR=x): commands are run without a shell. Wrap anything complex in a script.
+# Same checks as .github/workflows/ci.yml.
+test = "python3 bin/nonslop slop selftest"
+compile = "python3 -m compileall -q scripts tools"
+compile_cli = "python3 -m py_compile bin/nonslop"
+validate = "claude plugin validate ."
+
+[slop]
+# Seeded slop is the test data here: the eval seeds and the selftest cases must keep their slop.
+exclude = ["eval/**", "tools/slopstop/selftest.py"]
+# House pattern: scripts put their own directory on sys.path, then import (scripts/*.py, bin/nonslop).
+allow_suppress = ["noqa: E402"]
+
+[done]
+# Checked when an agent on a matching branch tries to finish.
+branch_prefix = "claude/"
+require = ["clean_tree", "pushed", "pr"]
+# CI runs the selftest, the compile checks and the manifest checks on every pull request.
+run = []
+gate_timeout_s = 1800
+auto_clean = false
+min_free_gb = 0
+stop_retries = 2
+
+[state]
+# The single handover file the coordinator keeps. Printed at every session start.
+file = "docs/STATE.md"
+
+[env]
+# Project-relative scratch root. Hook logs go to <scratch>/nonslop/. Must be git-ignored.
+scratch = ".claude/tmp"
+
+[rules]
+# Extra one-line rules for this project, shown to every agent.
+notes = [
+  "Scripts are stdlib-only Python 3.11+. tools/slopstop/ stays self-contained: nothing in it imports from the rest of nonslop.",
+  "Every edit under tools/slopstop/ gets an entry in tools/slopstop/NONSLOP-CHANGES.md; every rule change gets a selftest case that fails on the old code.",
+  "A change that installed copies must receive bumps `version` in .claude-plugin/plugin.json and adds a CHANGELOG.md entry in the same PR; the release steps are in docs/STATE.md.",
+  "The owner allows the coordinator to merge nonslop PRs once CI is green and the reviewer verdict is clean or minor (2026-11-21). Builders never merge.",
+  "Set PR bodies with `gh api -X PATCH repos/stcksmsh/nonslop/pulls/<n> -F body=@<file>`; `gh pr edit` fails on this machine.",
+]
