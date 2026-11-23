@@ -89,12 +89,23 @@ PROTECTED_DEFAULT = [
     "detekt.yml", "detekt.yaml", "config/detekt/**", "selene.toml", ".jscpd.json",
     ".gitleaks.toml", "sgconfig.yml", ".golangci.yml", ".golangci.yaml", ".clang-tidy",
     ".pre-commit-config.yaml", "lefthook.yml", ".github/workflows/**", ".git/hooks/**",
+    # test-runner and formatter configuration decides what a gate command checks
+    "pytest.ini", "tox.ini", "setup.cfg", "mypy.ini", ".mypy.ini", ".flake8", ".coveragerc",
+    "jest.config.*", "vitest.config.*", "vitest.workspace.*", ".mocharc*", "karma.conf.*",
+    "rustfmt.toml", ".rustfmt.toml", "deny.toml", ".cargo/config.toml", ".cargo/config",
+    ".husky/**", "lefthook-local.yml", ".lefthook.yml",
+    # the gate's own state: retry counters and the hit log
+    ".git/slopstop/**", "*/slopstop/stop.json", "*/slopstop/released.json", "*/slopstop/hits.jsonl",
 ]
+# Scripts a project names as a gate command are gates too (see gate_scripts).
+SCRIPT_SUFFIXES = (".sh", ".bash", ".zsh", ".ps1", ".cmd", ".bat")
+TASK_FILES = {"make": ("Makefile", "makefile", "GNUmakefile"), "just": ("justfile", "Justfile", ".justfile"),
+              "task": ("Taskfile.yml", "Taskfile.yaml")}
 # manifest files: only the lint-related parts are protected
 MANIFEST_LINT = {
     "Cargo.toml": r"clippy::|^\s*lints\s*[.=]",
     "pyproject.toml": r"^\s*(ignore|extend-ignore|per-file-ignores|select|exclude)\s*=",
-    "package.json": r"\"(lint|typecheck|check)\"\s*:|eslint|biome",
+    "package.json": r"\"(pre|post)?(lint|typecheck|check|test)(:[\w:.-]+)?\"\s*:|eslint|biome",
     "build.gradle.kts": r"detekt|ktlint|allWarningsAsErrors|lint\s*\{",
     "build.gradle": r"detekt|ktlint|allWarningsAsErrors|lint\s*\{",
     "tsconfig.json": r"\"(strict\w*|noImplicit\w+|noUnused\w+|skipLibCheck|exactOptional\w+|noUnchecked\w+|allowJs|checkJs)\"",
@@ -139,9 +150,23 @@ def load_config(root: Path) -> dict:
                 if k in user:
                     user[k] = list(DEFAULTS[k]) + list(user[k])
             cfg.update(user)
+            if f.name == ".nonslop.toml":
+                cfg["protected"] = list(cfg["protected"]) + gate_scripts(data.get("commands", {}), root)
         except Exception as e:  # bad config should not brick the agent
             print(f"slop: ignoring bad {f.name}: {e}", file=sys.stderr)
     return cfg
+
+def gate_scripts(commands: dict, root: Path) -> list[str]:
+    """Files a project's gate commands run: a script named in the command, or the task file of
+    `make`/`just`/`task`. Editing one changes what the gate checks, so they are protected."""
+    out: list[str] = []
+    for command in commands.values():
+        words = str(command).split()
+        if not words:
+            continue
+        out += [w.removeprefix("./") for w in words if w.endswith(SCRIPT_SUFFIXES) and (root / w).is_file()]
+        out += [n for n in TASK_FILES.get(Path(words[0]).name, ()) if (root / n).is_file()]
+    return out
 
 # --------------------------------------------------------------------------- findings
 
@@ -305,8 +330,22 @@ SUPPRESS = re.compile(
     r"#!?\[(allow|expect)\(|#\[ignore\]|#\s*noqa|#\s*type:\s*ignore|#\s*pyright:\s*ignore|#\s*pragma:\s*no\s*cover"
     r"|@Suppress(Warnings)?\(|@Ignore\b|@Disabled\b|eslint-disable|biome-ignore|@ts-(ignore|nocheck|expect-error)"
     r"|NOLINT|cppcheck-suppress|shellcheck\s+disable|selene:\s*allow|//\s*nolint|slop-ok"
-    r"|@pytest\.mark\.(skip|xfail)|@unittest\.skip|\b(it|describe|test)\.skip\(|\bx(it|describe)\(|t\.Skip\("
+    r"|pytest\.mark\.(skip|xfail)|\bpytest\.skip\(|@unittest\.skip|#\[ignore\b"
+    r"|\b(it|describe|test|context)\.(skip|only|todo)\(|\b[xf](it|describe|context)\(|t\.Skip(f|Now)?\("
 )
+# An assertion that cannot fail: it keeps the count up while checking nothing.
+TAUTOLOGY = re.compile(
+    r"\bassert\s+(True|1|not\s+False)\s*(,|#|$)|\bassert!\(\s*true\s*[,)]|\bassert\(\s*(true|True|1)\s*[,)]"
+    r"|\bassert(_eq|Eq|Equal|Equals|Same)?!?\(\s*([\w.\"']+)\s*,\s*\3\s*[,)]"
+    r"|\bexpect\(\s*(true|1)\s*\)\.(toBe\(\s*(true|1)\s*\)|toBeTruthy\(\))"
+    r"|\bexpect\(\s*([\w.\"']+)\s*\)\.(toBe|toEqual|toStrictEqual)\(\s*\7\s*\)"
+    r"|\bassert(True|\.ok|\.True)\(\s*(t\s*,\s*)?(true|True)\s*[,)]|\bassertFalse\(\s*(false|False)\s*[,)]"
+)
+ASSERT_SWALLOW = re.compile(r"\bexcept\s+\(?[^:]*\b(AssertionError|BaseException|Exception)\b|\bexcept\s*:"
+                            r"|\bcatch\s*(\(\s*\w*\s*\))?\s*\{\s*\}|\bcatch_unwind\b")
+TESTDEF = re.compile(
+    r"^\s*(?:async\s+)?def\s+(test_\w+)|^\s*func\s+(Test\w+)\s*\(|\b(?:it|test)\(\s*([\"'`][^\"'`]+)"
+    r"|^\s*(#\[(?:\w+::)?test\b)|^\s*(@Test\b)|^\s*(?:public\s+)?fun\s+(`[^`]+`|test\w+)\s*\(", re.M)
 ASSERT = re.compile(
     r"\bassert(_eq|_ne|_matches)?!?\b|\bassert\w*\(|\bexpect\(|\bXCTAssert|\b(EXPECT|ASSERT)_[A-Z_]+\(|"
     r"\bt\.(Error|Fatal)f?\(|\brequire\.\w+\(|\bshould\w*\(|pytest\.raises|assertThat|\bcheck\(|\bverify\("
@@ -356,6 +395,25 @@ SECRET = re.compile(
     r"\bsk-(ant-|proj-)?[A-Za-z0-9_-]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}"
 )
 
+def code_part(line: str, lang: str | None) -> str:
+    """The line without its trailing comment, so a commented-out assertion does not count as one."""
+    tok = "#" if lang in HASH_COMMENT else "--" if lang in DASH_COMMENT else "//"
+    i = line.find(tok)
+    while i >= 0 and (line[:i].count('"') % 2 or line[:i].count("'") % 2 or (tok == "#" and line[i:i + 2] in ("#[", "#!"))):
+        i = line.find(tok, i + 1)
+    return line if i < 0 else line[:i]
+
+def real_asserts(lines, lang: str | None) -> int:
+    """Assertions that can fail: comments and tautologies are not counted."""
+    n = 0
+    for line in lines:
+        code = code_part(line, lang)
+        n += len(ASSERT.findall(code)) - len(TAUTOLOGY.findall(code))
+    return n
+
+def test_names(text: str) -> list[str]:
+    return [next(g for g in m.groups() if g) for m in TESTDEF.finditer(text)]
+
 def comment_part(line: str, lang: str | None) -> str | None:
     s = line.strip()
     if lang in HASH_COMMENT:
@@ -401,6 +459,8 @@ def lexical_checks(fd: FileDiff, root: Path, cfg: dict) -> list[Finding]:
                 out.append(Finding("gate-tampered", p, hit[0] if hit else 1, f"lint settings in {mf} changed",
                                    hint="revert; only the human edits gates"))
 
+    out += dependency_findings(fd, root)
+
     allowed = tuple(cfg.get("allow_suppress", ()))
     def _sup(t: str) -> bool:
         return bool(SUPPRESS.search(t)) and not any(a in t for a in allowed)
@@ -424,12 +484,26 @@ def lexical_checks(fd: FileDiff, root: Path, cfg: dict) -> list[Finding]:
                                    hint="fix the underlying issue; suppressions need human approval", text=t))
 
     if test and code_file:
-        a_add = sum(len(ASSERT.findall(t)) for t in fd.added.values())
-        a_rem = sum(len(ASSERT.findall(t)) for t in fd.removed)
+        a_add = real_asserts(fd.added.values(), lang)
+        a_rem = real_asserts(fd.removed, lang)
         if a_rem > a_add:
             out.append(Finding("test-weakened", p, min(fd.added) if fd.added else 1,
                                f"{a_rem - a_add} assertion(s) removed from test file",
                                hint="restore assertions; change code to satisfy tests, not the reverse"))
+        gone = len(test_names("\n".join(fd.removed))) - len(test_names("\n".join(fd.added.values())))
+        if gone > 0 and not fd.new_file:
+            out.append(Finding("test-removed", p, min(fd.added) if fd.added else 1,
+                               f"{gone} test(s) removed or renamed out of the runner's sight",
+                               hint="restore them; a test that no longer applies is the owner's call"))
+        for n, t in fd.added.items():
+            code = code_part(t, lang)
+            if TAUTOLOGY.search(code):
+                out.append(Finding("tautological-assert", p, n, f"assertion that cannot fail: {t.strip()[:60]}",
+                                   hint="assert on the behaviour under test", text=t))
+            if ASSERT_SWALLOW.search(code) and "raises" not in code:
+                out.append(Finding("assert-swallowed", p, n, f"test catches its own failure: {t.strip()[:60]}",
+                                   sev="warn", hint="let the assertion fail; use the framework's raises/throws helper",
+                                   text=t))
 
     for n, t in fd.added.items():
         if SECRET.search(t):
@@ -475,6 +549,52 @@ def lexical_checks(fd: FileDiff, root: Path, cfg: dict) -> list[Finding]:
         if total > cfg["large_file_lines"]:
             out.append(Finding("file-too-large", p, min(fd.added), f"file is {total} lines and still growing",
                                sev="warn", hint="put new code in a new module"))
+    return out
+
+DEP_TABLES = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies",
+              "dev-dependencies", "build-dependencies")
+
+def dependency_names(name: str, text: str) -> set[str] | None:
+    """Direct dependencies a manifest declares, or None when `name` is not a manifest we read."""
+    try:
+        if name == "package.json":
+            data = json.loads(text or "{}")
+            return {d for t in DEP_TABLES for d in (data.get(t) or {})}
+        if name in ("Cargo.toml", "pyproject.toml") and tomllib:
+            data = tomllib.loads(text)
+            out = {d for t in DEP_TABLES for d in (data.get(t) or {})}
+            out |= set((data.get("workspace") or {}).get("dependencies") or {})
+            project = data.get("project") or {}
+            specs = list(project.get("dependencies") or [])
+            for group in (project.get("optional-dependencies") or {}, data.get("dependency-groups") or {}):
+                specs += [s for v in group.values() for s in v if isinstance(s, str)]
+            out |= {re.split(r"[\s<>=!~;\[(]", s.strip(), maxsplit=1)[0].lower() for s in specs if s.strip()}
+            poetry = ((data.get("tool") or {}).get("poetry") or {})
+            out |= set(poetry.get("dependencies") or {}) | set(poetry.get("dev-dependencies") or {})
+            return out - {"python"}
+        if re.fullmatch(r"requirements[\w.-]*\.txt", name):
+            return {m.group(1).lower() for m in re.finditer(r"^\s*([A-Za-z0-9][\w.-]*)", text, re.M)}
+        if name == "go.mod":
+            return set(re.findall(r"^\s*(?:require\s+)?([\w.-]+\.[\w./-]+)\s+v\d", text, re.M))
+    except (ValueError, AttributeError, TypeError):
+        return set()
+    return None
+
+def dependency_findings(fd: FileDiff, root: Path) -> list[Finding]:
+    name = Path(fd.path).name
+    try:
+        new = dependency_names(name, (root / fd.path).read_text(errors="replace"))
+    except OSError:
+        return []
+    if new is None:
+        return []
+    old = dependency_names(name, sh(["git", "show", f"{fd.base}:{fd.path}"], root).stdout) if fd.base and not fd.new_file else set()
+    out = []
+    for dep in sorted(new - (old or set())):
+        line = next((n for n, t in fd.added.items() if dep in t.lower()), min(fd.added) if fd.added else 1)
+        out.append(Finding("dependency-added", fd.path, line, f"new dependency `{dep}`", sev="warn",
+                           hint="a new dependency is the owner's call: name it in your report, or reuse what is there",
+                           text=dep))
     return out
 
 def is_protected(p: str, cfg: dict) -> bool:
@@ -910,7 +1030,7 @@ def run_checks(root: Path, diffs: dict[str, FileDiff], cfg: dict, fast: bool) ->
     kept = []
     for f in findings:
         d = diffs.get(f.file)
-        if f.rule in ("test-deleted", "gate-tampered", "test-weakened"):
+        if f.rule in ("test-deleted", "gate-tampered", "test-weakened", "test-removed", "dependency-added"):
             kept.append(f)
             continue
         if d is None or not d.added:
@@ -944,7 +1064,7 @@ def read_hook_input() -> dict:
     except json.JSONDecodeError:
         return {}
 
-def hook_root(inp: dict) -> Path | None:
+def hook_root(inp: dict) -> Path:
     cwd = Path(inp.get("cwd") or os.getcwd())  # cwd follows worktrees; CLAUDE_PROJECT_DIR does not
     return git_root(cwd) or cwd
 
@@ -952,6 +1072,8 @@ def proposed_texts(inp: dict) -> tuple[str, str, str]:
     """(file_path, whole_file_before, whole_file_after) for Edit/Write/MultiEdit tool inputs."""
     ti = inp.get("tool_input") or {}
     fp = ti.get("file_path") or ti.get("notebook_path") or ""
+    if not isinstance(ti, dict) or not isinstance(fp, str):
+        raise TypeError("tool_input is not in the shape Edit/Write send")
     try:
         old = Path(fp).read_text(errors="replace") if fp else ""
     except OSError:
@@ -975,9 +1097,76 @@ def deny(reason: str) -> int:
                                              "permissionDecisionReason": f"slopstop: {reason}"}}))
     return 0
 
-BASH_BYPASS = re.compile(r"git\s+(commit|push|merge|rebase)\b[^|;&]*\s(--no-verify|-n\b)|\bSKIP=\S+.*\bgit\b|"
-                         r"git\s+config\s+[^|;&]*core\.hooksPath|\bchmod\s+-x\s+\S*hooks")
-BASH_WRITE = re.compile(r"(>|>>|\btee\b|\bsed\s+-i|\bperl\s+-p?i|\bmv\b|\bcp\b|\brm\b|\btruncate\b)")
+HOOK_SKIP_ENV = ("HUSKY", "HUSKY_SKIP_HOOKS", "LEFTHOOK", "LEFTHOOK_EXCLUDE", "SKIP", "PRE_COMMIT_ALLOW_NO_CONFIG",
+                 "GIT_CONFIG_COUNT", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_PARAMETERS")
+HOOKED = {"commit": "mFCct", "push": "o", "merge": "msX", "rebase": "sXx", "am": "", "cherry-pick": "sXm",
+          "revert": "sXm", "pull": "sX"}
+COMMIT_LONG_VALUE = ("--message", "--file", "--author", "--date", "--cleanup", "--fixup", "--squash",
+                     "--reuse-message", "--reedit-message", "--template", "--trailer", "--pathspec-from-file")
+MUTATE_ALL = {"tee", "mv", "rm", "truncate", "touch", "chmod", "chown", "unlink", "shred", "patch", "rmdir"}
+MUTATE_LAST = {"cp", "ln", "install", "rsync", "scp"}
+INLINE_CODE = {"python", "python3", "node", "perl", "ruby", "php", "deno", "bun"}
+CODE_WRITES = re.compile(r"open\([^)]*,\s*['\"][wax+]|\bwrite|unlink|\bremove|\brename|\breplace\(|shutil|truncate|rmSync|\bos\.")
+
+def bypass_reason(c, SH) -> str | None:
+    """Why this simple command would switch a git hook or gate off, if it would."""
+    named = [k for k in c.env if k in HOOK_SKIP_ENV]
+    if c.prog == "export":
+        named += [a.partition("=")[0] for a in c.argv[1:] if a.partition("=")[0] in HOOK_SKIP_ENV]
+    if named and (c.prog in ("git", "export", "") or c.prog in SH.SHELLS):
+        return f"`{named[0]}=` switches git hooks off"
+    if c.prog == "chmod" and any(re.match(r"[ugoa]*-[rwx]*x", a) for a in c.argv[1:]) and any("hooks" in a for a in c.argv[1:]):
+        return "`chmod -x` on a hook switches it off"
+    g = SH.git_call(c)
+    if not g:
+        return None
+    if any(k.startswith("core.hookspath") for k in g.config):
+        return "`-c core.hooksPath=` moves git away from its hooks"
+    if g.sub == "config":
+        keys = [a for a in g.args if a.lower().startswith("core.hookspath")]
+        if keys and "--get" not in g.args and g.args[-1] != keys[0]:
+            return "`git config core.hooksPath` moves git away from its hooks"
+    if g.sub in HOOKED:
+        shorts, longs, _ = SH.options(g.args, HOOKED[g.sub], COMMIT_LONG_VALUE)
+        if SH.has_long(longs, "--no-verify", 9):
+            return "`--no-verify` skips the git hooks"
+        if g.sub == "commit" and "n" in shorts:
+            return "`git commit -n` skips the git hooks"
+    return None
+
+def write_targets(c, SH) -> list[str]:
+    """Paths this simple command writes, moves or deletes, as far as its arguments show."""
+    args = [a for a in c.argv[1:] if not a.startswith("-")]
+    out = list(c.writes)
+    if c.prog in MUTATE_ALL:
+        out += args
+    elif c.prog in MUTATE_LAST:
+        out += args[-1:]
+    elif c.prog == "sed" and any(a.startswith("--in-place") or re.fullmatch(r"-[A-Za-z]*i.*", a) for a in c.argv[1:]):
+        out += args
+    elif c.prog == "perl" and any(re.fullmatch(r"-[A-Za-z]*i.*", a) for a in c.argv[1:]):
+        out += args
+    elif c.prog == "dd":
+        out += [a[3:] for a in c.argv[1:] if a.startswith("of=")]
+    elif c.prog in INLINE_CODE:
+        for i, a in enumerate(c.argv[1:-1], start=1):
+            if a in ("-c", "-e", "--eval", "-p") and CODE_WRITES.search(c.argv[i + 1]):
+                out += re.findall(r"[\w./@-]+", c.argv[i + 1])
+    g = SH.git_call(c)
+    if g and g.sub in ("checkout", "restore", "rm", "mv"):
+        out += [a for a in g.args if not a.startswith("-")]
+    return out
+
+def bash_verdict(cmd: str, root: Path, cfg: dict) -> tuple[str, str, str] | None:
+    import shellcmd as SH
+    for c in SH.parse(cmd):
+        if why := bypass_reason(c, SH):
+            return "gate-bypass", "", f"{why}; bypassing git hooks/gates is not allowed, fix the findings instead"
+        for tok in write_targets(c, SH):
+            t = rel(root, tok) if os.path.isabs(tok) else tok.removeprefix("./")
+            if t and ("/" in t or "." in t) and is_protected(t, cfg):
+                return "gate-tampered", t, f"shell write touching protected gate file `{t}`; ask the user"
+    return None
 
 def opted_in(root: Path) -> bool:
     """Hooks installed user-wide only act in repos that opt in with a `.slop.toml` (or SLOP_ALL=1)."""
@@ -1016,15 +1205,9 @@ def pre_verdict(inp: dict, root: Path, cfg: dict) -> tuple[str, str, str] | None
     tool = inp.get("tool_name", "")
     if tool == "Bash":
         cmd = (inp.get("tool_input") or {}).get("command", "")
-        if BASH_BYPASS.search(cmd):
-            return "gate-bypass", "", "bypassing git hooks/gates is not allowed; fix the findings instead"
-        if BASH_WRITE.search(cmd):
-            for tok in re.findall(r"[\w./@*-]+", cmd):
-                if "/" in tok or "." in tok:
-                    t = tok.lstrip("./")
-                    if t and is_protected(t, cfg):
-                        return "gate-tampered", t, f"shell write touching protected gate file `{t}`; ask the user"
-        return None
+        if not isinstance(cmd, str):
+            raise TypeError("tool_input.command is not a string")
+        return bash_verdict(cmd, root, cfg)
     fp, old, new = proposed_texts(inp)
     if not fp:
         return None
@@ -1045,10 +1228,15 @@ def pre_verdict(inp: dict, root: Path, cfg: dict) -> tuple[str, str, str] | None
             return ("suppression-added", p,
                     f"adding a suppression/skip (`{m[:60]}`) needs user approval. Fix the cause, or stop and ask.")
     if is_test_path(p) and lang_of(p):
-        a_new, a_old = len(ASSERT.findall(new)), len(ASSERT.findall(old))
-        if a_new < a_old:
+        lang = lang_of(p)
+        if real_asserts(new.splitlines(), lang) < real_asserts(old.splitlines(), lang):
             return ("test-weakened", p,
-                    "this edit removes test assertions. Change the code to satisfy the test, or ask the user.")
+                    "this edit removes test assertions (comments and assertions that cannot fail do not count). "
+                    "Change the code to satisfy the test, or ask the user.")
+        if len(test_names(new)) < len(test_names(old)):
+            return ("test-removed", p,
+                    "this edit removes or renames a test so the runner no longer sees it. "
+                    "If the test no longer applies, stop and ask the user.")
     return None
 
 def hook_post(inp: dict) -> int:
@@ -1079,6 +1267,23 @@ def state_file(root: Path) -> Path:
     d = (root / gd / "slopstop") if not os.path.isabs(gd) else Path(gd) / "slopstop"
     d.mkdir(parents=True, exist_ok=True)
     return d / "stop.json"
+
+def record_release(root: Path, session: str, fs: list[Finding]) -> None:
+    """Stop let the agent go with findings open. Leave that on disk, per branch and commit, so whoever
+    takes the work next (a coordinator, `nonslop status`, a merge guard) sees it was not cleared."""
+    path = state_file(root).with_name("released.json")
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    branch = sh(["git", "rev-parse", "--abbrev-ref", "HEAD"], root).stdout.strip()
+    data[branch] = {"ts": round(time.time()), "session": session,
+                    "sha": sh(["git", "rev-parse", "HEAD"], root).stdout.strip(),
+                    "findings": [f"{f.file}:{f.line} [{f.rule}] {f.sev}" for f in fs]}
+    try:
+        path.write_text(json.dumps(data, indent=1))
+    except OSError:
+        pass
 
 def hook_stop(inp: dict) -> int:
     t0 = time.monotonic()
@@ -1115,6 +1320,7 @@ def stop_verdict(inp: dict, root: Path, cfg: dict) -> tuple[int, list[Finding]]:
     st["fps"] = fps
     sf.write_text(json.dumps(st))
     if st["strikes"] >= cfg["stop_retries"]:
+        record_release(root, sid, fs)
         print(json.dumps({"systemMessage": fmt(fs, cfg, "slopstop: agent could not clear these; review manually:")}))
         return 0, fs
     head = (f"slopstop: {len(blocking)} blocking issue(s) in this change. Fix them before finishing. "
@@ -1323,6 +1529,31 @@ def cmd_selftest(args: list[str]) -> int:
     import selftest  # noqa: E402  (kit-local module)
     return selftest.main(KIT)
 
+# What an internal bug raises. Listed, not `Exception`, so nothing that means "stop" is swallowed.
+INTERNAL_ERRORS = (ArithmeticError, AssertionError, AttributeError, ImportError, LookupError, OSError,
+                   RuntimeError, TypeError, ValueError, subprocess.SubprocessError)
+
+def hook_crashed(ev: str, inp: dict, error: BaseException) -> int:
+    """An internal error in a hook. Post and Stop only advise or re-check, so they let the agent go on.
+    Pre is the one hook that denies, and a guard that could not look must not answer "allowed": in an
+    opted-in repository it denies and says why. SLOP_FAIL_OPEN=1 (set by the owner, in the environment
+    Claude Code starts with) turns that off if a bug here ever blocks real work. Always logged."""
+    print(f"slopstop internal error ({ev}): {type(error).__name__}: {error}", file=sys.stderr)
+    try:
+        root = hook_root(inp if isinstance(inp, dict) else {})
+        wired = opted_in(root)
+        if wired:
+            with state_file(root).with_name("hits.jsonl").open("a") as fh:
+                fh.write(json.dumps({"ts": round(time.time(), 3), "event": ev, "rule": None, "decision": "crash",
+                                     "error": f"{type(error).__name__}: {error}"[:300]}) + "\n")
+    except INTERNAL_ERRORS as second:  # not even the repository could be read: nothing to protect or log to
+        print(f"slopstop internal error while reporting: {type(second).__name__}: {second}", file=sys.stderr)
+        return 0
+    if ev == "pre" and wired and os.environ.get("SLOP_FAIL_OPEN") != "1":
+        deny(f"internal error, so this call was not checked ({type(error).__name__}: {error}). "
+             "Do not retry it in another form; report it to the user.")
+    return 0
+
 def main(argv: list[str]) -> int:
     sys.path.insert(0, str(KIT))
     if not argv or argv[0] in ("-h", "--help"):
@@ -1332,14 +1563,15 @@ def main(argv: list[str]) -> int:
     if cmd == "hook":
         inp = read_hook_input()
         ev = rest[0] if rest else ""
+        if not isinstance(inp, dict):
+            inp = {"_malformed": True}
         try:
             return {"pre": hook_pre, "post": hook_post, "stop": hook_stop}[ev](inp)
         except KeyError:
             print(f"slop hook: unknown event {ev}", file=sys.stderr)
             return 1
-        except Exception as e:  # never wedge the agent on an internal bug
-            print(f"slopstop internal error ({ev}): {e}", file=sys.stderr)
-            return 0
+        except INTERNAL_ERRORS as e:
+            return hook_crashed(ev, inp, e)
     return {"check": cmd_check, "doctor": cmd_doctor, "init": cmd_init, "install-global": cmd_install_global, "selftest": cmd_selftest}.get(
         cmd, lambda a: (print(__doc__), 1)[1])(rest)
 

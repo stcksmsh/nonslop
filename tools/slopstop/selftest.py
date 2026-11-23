@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -308,7 +309,51 @@ CASES = [
     dict(name="secret in code", path="src/keys.py", tools=[],
          base="A = 1\n", new="A = 1\nTOKEN = \"ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8" + "\"\n",
          want={"secret"}),
+    dict(name="test gaming: tautology, swallowed assert, test renamed away", path="tests/test_gaming.py", tools=[],
+         base=D("""\
+            def test_total():
+                assert total([1, 2]) == 3
+
+            def test_empty():
+                assert total([]) == 0
+            """),
+         new=D("""\
+            def test_total():
+                assert True
+                try:
+                    assert total([1, 2]) == 3
+                except AssertionError:
+                    pass
+
+            def _test_empty():
+                pass  # assert total([]) == 0
+            """),
+         want={"tautological-assert", "assert-swallowed", "test-removed", "test-weakened"}),
+    dict(name="test gaming: .only narrows the run", path="web/sum.test.ts", tools=[],
+         base="it('adds', () => { expect(sum(1, 2)).toBe(3); });\n",
+         new="it.only('adds', () => { expect(sum(1, 2)).toBe(3); });\n",
+         want={"suppression-added"}),
+    dict(name="test gaming: honest test edit stays quiet", path="tests/test_honest.py", tools=[],
+         base="def f(x):\n    return x + 1\n\n\ndef test_a():\n    assert f(1) == 2\n",
+         new=("def f(x):\n    return x + 1\n\n\ndef test_a():\n    assert f(1) == 2\n    assert f(2) == 3  # the boundary\n"
+              "\n\ndef test_b():\n    assert f(0) == 1\n"),
+         want=set(), deny_all=True),
+    dict(name="manifest: new dependency, test script swapped", path="pkg/package.json", tools=[],
+         base='{\n "scripts": {\n  "test": "jest"\n },\n "dependencies": {\n  "ms": "2.1.3"\n }\n}\n',
+         new='{\n "scripts": {\n  "test": "true"\n },\n "dependencies": {\n  "ms": "2.1.3",\n  "left-pad": "1.3.0"\n }\n}\n',
+         want={"dependency-added", "gate-tampered"}),
+    dict(name="manifest: version bump of an existing dependency is not a new one", path="pkg2/requirements.txt", tools=[],
+         base="requests==2.31.0\n", new="requests==2.32.0\n", want=set(), deny_all=True),
+    dict(name="comments: hedge and emoji", path="src/hedge.py", tools=[],
+         base="A = 1\n", new="A = 1\nB = 2  # for now this should work \u2705\n",
+         want={"hedge-comment", "emoji-comment"}),
+    dict(name="gate: test-runner config", path="pytest.ini", tools=[],
+         base="[pytest]\naddopts = -q\n", new="[pytest]\naddopts = -q --deselect tests/test_gaming.py\n",
+         want={"gate-tampered"}),
 ]
+# Rules that need an optional tool or a huge fixture to fire; every other rule id slop.py can emit
+# must be wanted by a case above, so a rule can never ship without a test that shows it going red.
+NOT_SEEDED = {"duplicate-code", "go-vet", "file-too-large", "test-deleted"}
 
 DUP_BASE = D("""\
     def compute_stats(values):
@@ -381,6 +426,26 @@ def main(kit: Path) -> int:
                 passes += 1
                 print(f"ok   {c['name']}" + (f"  (+{sorted(got - c['want'])})" if got - c["want"] else ""))
 
+        wanted = set().union(*(c["want"] for c in CASES))
+        emitted = set(re.findall(r'Finding\("([a-z-]+)"', (kit / "slop.py").read_text()))
+        emitted |= set(re.findall(r'^\s+(?:yield|out\.append\(\()\s*\(?"([a-z-]+)"', (kit / "semantic.py").read_text(), re.M))
+        got = by_file.get("lib/stats2.py", set())
+        if "near-duplicate-code" in got:
+            passes += 1
+            print("ok   renamed copy of an existing function detected")
+        else:
+            fails += 1
+            print(f"FAIL renamed copy not detected, got={sorted(got)}")
+
+        wanted.add("near-duplicate-code")
+        unseeded = sorted(emitted - wanted - NOT_SEEDED)
+        if unseeded:
+            fails += 1
+            print(f"FAIL every rule has a seeded case: none for {unseeded}")
+        else:
+            passes += 1
+            print(f"ok   every rule has a seeded case ({len(emitted)} rule ids)")
+
         if slop.have("jscpd"):
             got = by_file.get("lib/stats2.py", set())
             if "duplicate-code" in got:
@@ -442,6 +507,47 @@ def main(kit: Path) -> int:
         rc, out, _ = run_hook("pre", {"cwd": str(root), "tool_name": "Bash", "tool_input": {
             "command": "sed -i 's/deny/allow/' Cargo.toml clippy.toml"}})
         check("pre denies sed on gate file", '"deny"' in out, out)
+
+        def pre_bash(command):
+            return run_hook("pre", {"cwd": str(root), "tool_name": "Bash", "tool_input": {"command": command}})[1]
+
+        for command in [
+            "echo x > .nonslop.toml", "cp /tmp/a ./.slop.toml", "tee -a .github/workflows/ci.yml",
+            "git commit -nm wip", "git -C . commit --no-verify -m wip", "git -c core.hooksPath=/dev/null commit -m wip",
+            "git commit --no-verif -m wip", "HUSKY=0 git commit -m wip", "env LEFTHOOK=0 git push",
+            "bash -c 'git commit --no-verify -m wip'", "timeout 60 git commit -n -m wip",
+            "git checkout HEAD~1 -- clippy.toml", "git restore --source HEAD~1 pytest.ini",
+            "python3 -c \"open('clippy.toml','w').write('')\"", "dd if=/dev/null of=clippy.toml",
+            "echo '{}' > .git/slopstop/stop.json", "true && rm .git/slopstop/hits.jsonl",
+        ]:
+            check(f"pre denies `{command}`", '"deny"' in pre_bash(command), pre_bash(command))
+        for command in [
+            "git push -n origin feature", "git commit -m 'fix: handle the -n flag and --no-verify text'",
+            "git commit -m \"$(cat <<'EOF'\nexplain why --no-verify is denied\ngit commit -n is too\nEOF\n)\"",
+            "cat clippy.toml", "cp clippy.toml /tmp/copy.toml", "git log --oneline -n 5", "grep -n deny .nonslop.toml",
+            "python3 -c \"print(open('clippy.toml').read())\"", "git merge -n origin/main",
+        ]:
+            check(f"pre allows `{command}`", pre_bash(command).strip() == "", pre_bash(command))
+
+        def pre_edit(path, old, new):
+            return run_hook("pre", {"cwd": str(root), "tool_name": "Edit", "tool_input": {
+                "file_path": str(root / path), "old_string": old, "new_string": new}})[1]
+
+        git(root, "stash", "-q", "-u")  # the pre hook reads the file on disk: judge edits against the base
+        out = pre_edit("tests/test_gaming.py", "assert total([1, 2]) == 3", "assert True")
+        check("pre denies swapping an assertion for `assert True`", '"deny"' in out, out)
+        out = pre_edit("tests/test_gaming.py", "assert total([]) == 0", "pass  # assert total([]) == 0")
+        check("pre denies commenting an assertion out", '"deny"' in out, out)
+        out = pre_edit("tests/test_gaming.py", "def test_empty", "def _test_empty")
+        check("pre denies renaming a test out of the runner's sight", '"deny"' in out and "test" in out, out)
+        out = pre_edit("tests/test_gaming.py", "assert total([]) == 0", "assert total([]) == 0\n    assert total([0]) == 0")
+        check("pre allows adding an assertion", out.strip() == "", out)
+        git(root, "stash", "pop", "-q")
+        rc, out, err = run_hook("pre", {"cwd": str(root), "tool_name": "Edit", "tool_input": {"file_path": 7}})
+        check("pre denies a payload it cannot read, and says so", '"deny"' in out and "internal error" in out, out + err)
+        check("the crash is logged", any(h.get("decision") == "crash" for h in hits()), str(hits()[-2:]))
+        rc, out, _ = run_hook("pre", {"cwd": str(root), "tool_name": "Edit", "tool_input": {"file_path": 7}}, optin=False)
+        check("a crash in a repo that is not opted in stays silent", out.strip() == "" and rc == 0, out)
         rc, out, _ = run_hook("pre", {"cwd": str(root), "tool_name": "Edit", "tool_input": {
             "file_path": str(root / "src/filter.rs"), "old_string": "x }", "new_string": "x + 0.0 }"}})
         check("pre allows normal edit", rc == 0 and out.strip() == "", out)
@@ -483,6 +589,12 @@ def main(kit: Path) -> int:
         payload["stop_hook_active"] = True
         rcs = [run_hook("stop", payload)[0] for _ in range(3)]
         check("stop loop-breaker lets go after retries", rcs[-1] == 0, str(rcs))
+        try:
+            released = json.loads((root / ".git/slopstop/released.json").read_text())
+        except (OSError, json.JSONDecodeError):
+            released = {}
+        check("a release is recorded with branch, commit and findings",
+              bool(released.get("main", {}).get("sha")) and bool(released["main"].get("findings")), str(released)[:200])
 
         git(root, "add", "-A")
         git(root, "commit", "-qm", "slop")

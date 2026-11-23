@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import slices  # noqa: E402
 from nonslop_config import load_config, read_hook_input, record_session_start, start_dir  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -66,6 +67,26 @@ def render_state(config: dict, root: Path) -> str:
     return section(f"Current state ({relative})", body)
 
 
+def render_slices(config: dict, root: Path) -> str:
+    """What the slice records say is open. Local files only: this hook has ten seconds."""
+    lines = []
+    for record in slices.all_records(config, root):
+        status = record.get("status")
+        if status not in slices.OPEN:
+            continue
+        verify, review = record.get("verify") or {}, slices.last_review(record)
+        line = (f"- {record['branch']}: {status}; verify "
+                f"{'none' if not verify else 'ok' if verify.get('ok') else 'FAILED'} "
+                f"{str(verify.get('sha', ''))[:9]}; review {review.get('verdict', 'none')} {str(review.get('sha', ''))[:9]}")
+        if status == "released":
+            line += "  <- let go with finish checks failing; not done"
+        lines.append(line)
+    if not lines:
+        return ""
+    lines.append("Run `nonslop status` for pull requests, CI and worktrees before acting on these.")
+    return section("Slices in flight (from the slice records)", "\n".join(lines))
+
+
 def render(config: dict, root: Path, with_state: bool) -> str:
     parts = [
         "# nonslop",
@@ -73,6 +94,7 @@ def render(config: dict, root: Path, with_state: bool) -> str:
         render_commands(config),
         render_project_rules(config),
         render_state(config, root) if with_state else "",
+        render_slices(config, root) if with_state else "",
     ]
     return "\n".join(part for part in parts if part)
 

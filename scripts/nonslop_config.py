@@ -103,3 +103,63 @@ def unchanged_since_start(config: dict, root: Path, cwd: Path, session_id: str) 
     except OSError:  # no recorded start (resumed session, subagent worktree): check as before
         return False
     return recorded == tree_state(cwd)
+
+
+def git_out(args: list[str], cwd: Path, timeout: int = 20) -> tuple[int, str]:
+    """Run git, return (exit code, stripped stdout). A git that cannot run reads as exit 1."""
+    try:
+        result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ""
+    return result.returncode, result.stdout.strip()
+
+
+def main_root(cwd: Path) -> Path | None:
+    """The main checkout this directory belongs to, also from inside a linked worktree."""
+    code, common = git_out(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd)
+    if code != 0 or not common:
+        return None
+    path = Path(common)
+    return path.parent if path.name == ".git" else path
+
+
+def worktree_root(cwd: Path) -> Path | None:
+    code, top = git_out(["rev-parse", "--show-toplevel"], cwd)
+    return Path(top) if code == 0 and top else None
+
+
+def default_branch(cwd: Path) -> str:
+    """Name of the remote's default branch, without `origin/`."""
+    code, ref = git_out(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd)
+    if code == 0 and ref.startswith("origin/"):
+        return ref.removeprefix("origin/")
+    for name in ("main", "master"):
+        if git_out(["rev-parse", "--verify", "-q", f"origin/{name}"], cwd)[0] == 0:
+            return name
+    return "main"
+
+
+def state_dir(config: dict, cwd: Path) -> Path:
+    """Where nonslop keeps what must outlive one worktree: the main checkout's scratch.
+
+    A builder's worktree has its own (ignored, empty) scratch; slice records written there would be
+    invisible to the coordinator and to the next builder.
+    """
+    root = main_root(cwd) or worktree_root(cwd) or cwd
+    return scratch_dir(config, root)
+
+
+def write_json(path: Path, data: object) -> None:
+    """Replace `path` in one step, so a reader never sees half a file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def read_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}

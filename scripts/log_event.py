@@ -13,16 +13,17 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from nonslop_config import load_config, read_hook_input, scratch_dir, start_dir  # noqa: E402
+from nonslop_config import load_config, read_hook_input, start_dir, state_dir  # noqa: E402
 
 
 def append(config: dict, root: Path, event: str, record: dict) -> None:
-    """Add one line to <scratch>/nonslop/<event>.jsonl. A log that cannot be written must not
-    change what the calling hook decides, so the failure is dropped."""
+    """Add one line to <scratch>/nonslop/<event>.jsonl in the main checkout, so what a builder's
+    hooks logged is still there after its worktree is removed. A log that cannot be written must
+    not change what the calling hook decides, so the failure is dropped."""
     record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event, **record}
     try:
         line = json.dumps(record, ensure_ascii=False) + "\n"
-        with (scratch_dir(config, root) / f"{event}.jsonl").open("a", encoding="utf-8") as handle:
+        with (state_dir(config, root) / f"{event}.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(line)
     except (OSError, TypeError, ValueError):
         pass
