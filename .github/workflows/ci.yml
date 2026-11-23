@@ -38,5 +38,8 @@ jobs:
           python -m json.tool hooks/hooks.json > /dev/null
           python -m json.tool templates/settings.json > /dev/null
 
+      - name: init --from test
+        run: python tests/test_cli_init.py
+
       - name: slopstop selftest
         run: python bin/nonslop slop selftest
