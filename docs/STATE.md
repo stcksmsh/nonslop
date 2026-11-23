@@ -1,40 +1,36 @@
-# State 2026-11-22
+# State 2026-11-23
 
 ## Goal
-One updateable Claude Code plugin that keeps agent-written code clean in all of Kosta's projects, wired one project at a time.
+One updateable Claude Code plugin that keeps agent-written code clean in all of Kosta's projects. Current focus: measure what nonslop saves with real numbers, then build only what the numbers support. Plan: three parts (workflow, static gates, optional token gates); research report and plan live outside git.
 
 ## Done
-- 0.1.0 (#1–#7): version, MIT OR Apache-2.0, CI, install once per user. Trial fixes: "backup" name false positive, retired allow rules (env, timeout, python3, find, gh api), selftest SKIP text, ruff `--no-cache`, bad `--base` fails, new untracked protected files flagged.
-- 0.1.1 (#8) Stop skips a session that changed nothing. 0.1.2 (#9) `.nonslop.toml` lookup stops at the repo root. 0.1.3 (#10) slice branch prefix in the rules and the coordinator.
-- 0.1.3 installed at user scope in `~/.claude` and `~/.claude-alt`.
-- Wired: aegis (aegis#1, `045fa02`, `branch_prefix = "claude/slice-"`), kabl (kabl#186, `fd5be61`), nonslop itself (this file).
-- Live headless checks passed: rules at SessionStart in a wired repo; silent in unwired and nested repos; Stop lets an unchanged session go; skills listed under both configs.
+- 0.1.0–0.1.3 (#1–#10): see CHANGELOG. Wired: aegis, kabl, nonslop.
+- 0.1.4 (#12, `d6c7b4f`): gate hit log `.git/slopstop/hits.jsonl` (per hook call: decision, ms; per finding: rule, severity) and wrapper logs in `<scratch>/nonslop/*.jsonl`.
+- #14: `.claude/worktrees/` gitignored (unblocks `claude plugin tag`).
+- 0.1.5 (#15, `90fb810`): `/nonslop:wire` skill and `nonslop init --from <draft>`. Tagged `nonslop--v0.1.5`, installed in `~/.claude` and `~/.claude-alt`.
+- Builder path verified live: worktree under `.claude/worktrees/`, starts at origin/main, SubagentStart rules injected.
 
 ## In flight
-None.
+- claude/static-corpus: `eval/static/` replay of merged PRs (kabl, aegis, nonslop) and seeded recall set. Builder running.
 
 ## Next
-1. Secrets release 0.2.0, slices:
-   a. template denies Read/Edit of `**/.env*`, `**/*.pem`, `**/*.key`, `**/id_rsa*`, `**/credentials*.json`, `~/.ssh/**`, `~/.aws/**`; `init` adds them to wired projects;
-   b. pre-hook blocks `git add`/commit of those names and Bash commands matching the `SECRET` regex (`tools/slopstop/slop.py`);
-   c. fix and test `a_gitleaks` (marked untested), install gitleaks in CI, doctor reports it;
-   d. `[slop].secret_patterns` for project secrets (aegis: a literal `RESTIC_PASSWORD=` value or a passphrase as an argument).
-   One selftest case per slice that fails on the old code.
-2. Verify the builder path live: a coordinator slice through `nonslop:builder`. Check that SubagentStart/SubagentStop matchers fire, hook `cwd` is the builder worktree, and the worktree starts from origin/<default>. Then clear README "Not verified yet".
-3. Upgrade path: a `schema` key in `.nonslop.toml`; `doctor` reports drift (missing keys, old schema, permissions vs template).
-4. `/nonslop:wire` skill: orient, init, fill the toml from CI and agent docs, doctor, fast dry run over recent PRs, triage, wiring PR.
-5. Wire the next project.
+1. Model triage of the static findings (reviewer labels, owner spot-checks 30) → precision per rule.
+2. `nonslop stats`: hit log + session transcripts (`~/.claude*/projects/*.jsonl`) → tokens, time, review rounds per merged PR. Zero quota.
+3. Small A/B harness, quota only for caveman and ponytail (haiku): caveman 12 single-turn prompts × 3 arms × 3; ponytail 6 small tasks × 3 arms × 3. Pilot first; owner reads `/usage` before and after; full set only if ≤ ~15% of a 5h window.
+4. 0.2.0 secrets + hardening (bypass gaps HUSKY=0/LEFTHOOK=0/stash, `git push -n` false positive, test-gaming rules, onFailure block, escape-hatch line, plugin hooks/scripts protected), each with a before/after number.
+5. New-dependency gate; baseline/ratchet; review gate only if it beats the single reviewer per token.
 
 ## Waiting on owner
-- aegis `[slop]`: `ruff:BLE001` blocked once falsely (`tests/e2e_handover.py` poll loop); `ruff:T201` warns on E2E prints. Tune or leave.
-- kabl: allow `Bash(gh api -X PATCH repos/stcksmsh/kabl/pulls/:*)` (auto-mode refused my adding it); install Rust 1.100.0 to match CI (kabl uses `+1.99.0`); `kabl_agents` sink is not loaded.
-- Pull local checkouts: aegis and kabl roots are behind their master.
+- Add CI step `python tests/test_cli_init.py` to `.github/workflows/ci.yml` (agents are blocked from CI config).
+- aegis `[slop]` tuning (BLE001, T201); kabl allow rule, Rust 1.100.0, kabl_agents sink; pull aegis and kabl checkouts.
 
 ## Hard-won facts
-- Release: in the PR bump `version` in `.claude-plugin/plugin.json` and add a CHANGELOG entry → squash-merge → wait for green main CI → `claude plugin tag --push <clean checkout at origin/main>` → `claude plugin marketplace update nonslop` and `claude plugin update nonslop@nonslop`. Repeat both with `CLAUDE_CONFIG_DIR=/home/stcksmsh/.claude-alt`. No version bump, no update.
-- kabl sessions run on `~/.claude-alt`, aegis on `~/.claude`. Plugins load at session start: restart after install or update.
-- Live hook test: `claude -p "..." --model haiku --tools "" --strict-mcp-config --no-session-persistence --output-format stream-json --include-hook-events --verbose > file`, then `jq` the `hook_response` events. The `init` event lists plugins and slash commands.
-- `slop check --all` on nonslop flags its own suppression-regex lines in `slop.py` (`suppression-added`); editing those lines trips the gate. Report it, do not work around it.
+- Release: bump version + CHANGELOG in the PR → squash-merge → green main CI → owner runs `claude plugin tag --push .` (auto mode refuses it for agents) → `claude plugin marketplace update nonslop` and `claude plugin update nonslop@nonslop`, both also with `CLAUDE_CONFIG_DIR=/home/stcksmsh/.claude-alt`.
+- Once `.nonslop.toml` exists the pre hook denies every Edit/Write/cp of it (matched by file name anywhere); create config only via `init --from`.
+- Agents cannot edit `.github/workflows/**`; CI changes go to the owner.
+- `gh pr merge --delete-branch` fails while a builder worktree holds the branch; delete the remote branch and `git worktree remove --force` instead. Local squash-merged branches need `-D`, which is denied: leave them.
+- Max subscription only: no API spend. `--bare` needs an API key; measure with `claude -p --output-format stream-json`.
+- kabl sessions run on `~/.claude-alt`, aegis on `~/.claude`. Plugins load at session start.
 - The worktree guard reads paths containing `eval` as shell `eval`; use `git grep` for `eval/`.
-- `gh pr edit` fails (GraphQL Projects classic); use `gh api -X PATCH .../pulls/<n> -F body=@file`.
-- The auto-mode classifier refuses widening a project's permission allow list; the owner adds those himself.
+- `gh pr edit` fails; use `gh api -X PATCH repos/stcksmsh/nonslop/pulls/<n> -F body=@file`.
+- The auto-mode classifier refuses widening a project's permission allow list.
