@@ -7,6 +7,10 @@
   nonslop check [args]    what an agent would be told now: static slop checks, then the project's gates
                           (args go to `slop check`: --all, --staged, --base <ref>, --fast, --json)
   nonslop rules           print the rules and project wiring agents receive
+  nonslop slice <cmd>     slice records: new <brief.md>, verify <branch>, review <branch> <verdict>,
+                          close <branch> <merged|closed>, show <branch>   (`nonslop slice` for details)
+  nonslop status          every slice branch and worktree: PR, CI, record, stale or unsaved work
+  nonslop stats           gate hits, hook cost, tokens per branch, review rounds (--json, --since <days>)
   nonslop slop <args>     run the vendored slopstop directly (selftest, doctor, check, ...)
 
 Works from any shell. Inside Claude Code it is on PATH while the plugin is enabled.
@@ -26,6 +30,8 @@ sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from gates import run_gates  # noqa: E402
 from nonslop_config import scratch_dir  # noqa: E402
+from slice_cli import cmd_slice, cmd_status  # noqa: E402
+from stats import cmd_stats  # noqa: E402
 
 
 def project_root() -> Path:
@@ -140,6 +146,16 @@ def cmd_doctor(_args: list[str]) -> int:
         print(f"command   {name}: {command or '(empty)'}")
     done = config.get("done", {})
     print(f"done      require={done.get('require', [])} run={done.get('run', [])} auto_clean={done.get('auto_clean', False)}")
+    for name in done.get("run", []):
+        command = config.get("commands", {}).get(name, "")
+        if command.split()[:1] in (["true"], [":"], ["echo"]) or not command:
+            print(f"WARNING   gate '{name}' is `{command}`: it cannot fail, so it proves nothing")
+    if not done.get("run") and not config.get("verify", {}).get("run"):
+        print("note      no gates in [done].run or [verify].run: finish checks and `slice verify` run no project command")
+    merge = config.get("merge", {})
+    print(f"merge     guard={merge.get('guard', True)} require={merge.get('require', ['verify', 'review', 'ci'])} "
+          f"allow_no_ci={merge.get('allow_no_ci', False)}")
+    print(f"guard     secret_read={config.get('guard', {}).get('secret_read', True)}")
     if state := config.get("state", {}).get("file"):
         print(f"state     {state} ({'present' if (root / state).exists() else 'missing'})")
     print(f"plugin    {plugin_status()}")
@@ -170,7 +186,8 @@ def cmd_slop(args: list[str]) -> int:
 
 
 def main() -> int:
-    commands = {"init": cmd_init, "doctor": cmd_doctor, "check": cmd_check, "rules": cmd_rules, "slop": cmd_slop}
+    commands = {"init": cmd_init, "doctor": cmd_doctor, "check": cmd_check, "rules": cmd_rules, "slop": cmd_slop,
+                "slice": cmd_slice, "status": cmd_status, "stats": cmd_stats}
     if len(sys.argv) < 2 or sys.argv[1] not in commands:
         print(__doc__.strip())
         return 2

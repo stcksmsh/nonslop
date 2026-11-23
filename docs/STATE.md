@@ -1,36 +1,40 @@
 # State 2026-11-23
 
 ## Goal
-One updateable Claude Code plugin that keeps agent-written code clean in all of Kosta's projects. Current focus: measure what nonslop saves with real numbers, then build only what the numbers support. Plan: three parts (workflow, static gates, optional token gates); research report and plan live outside git.
+One updateable Claude Code plugin that keeps agent-written code clean in all of Kosta's projects. Two halves, both must hold: the workflow and the gates. Measure what nonslop saves with real numbers; build only what the numbers support.
 
 ## Done
-- 0.1.0–0.1.3 (#1–#10): see CHANGELOG. Wired: aegis, kabl, nonslop.
-- 0.1.4 (#12, `d6c7b4f`): gate hit log `.git/slopstop/hits.jsonl` (per hook call: decision, ms; per finding: rule, severity) and wrapper logs in `<scratch>/nonslop/*.jsonl`.
-- #14: `.claude/worktrees/` gitignored (unblocks `claude plugin tag`).
-- 0.1.5 (#15, `90fb810`): `/nonslop:wire` skill and `nonslop init --from <draft>`. Tagged `nonslop--v0.1.5`, installed in `~/.claude` and `~/.claude-alt`.
-- Builder path verified live: worktree under `.claude/worktrees/`, starts at origin/main, SubagentStart rules injected.
+- 0.1.0–0.1.5 (#1–#17): see CHANGELOG. Wired: aegis, kabl, nonslop. Builder path verified live.
+- 0.2.0 on branch `ccr-27207502-hdarvr`, not merged, not tagged: gates read commands as argv (`shellcmd.py`), dotfile protection bug fixed, test-gaming rules, crash policy, `scripts/guard.py`, slice records, `nonslop slice new|verify|review|close|show`, `nonslop status`, `nonslop stats`, rewritten builder/reviewer/coordinator/rules. Selftest 84 pass, `tests/test_hooks.py` 69 pass.
 
 ## In flight
-- claude/static-corpus: `eval/static/` replay of merged PRs (kabl, aegis, nonslop) and seeded recall set. Builder running.
+- claude/static-corpus: `eval/static/` replay of merged PRs and seeded recall set (state before this session; check `nonslop status`).
 
 ## Next
-1. Model triage of the static findings (reviewer labels, owner spot-checks 30) → precision per rule.
-2. `nonslop stats`: hit log + session transcripts (`~/.claude*/projects/*.jsonl`) → tokens, time, review rounds per merged PR. Zero quota.
-3. Small A/B harness, quota only for caveman and ponytail (haiku): caveman 12 single-turn prompts × 3 arms × 3; ponytail 6 small tasks × 3 arms × 3. Pilot first; owner reads `/usage` before and after; full set only if ≤ ~15% of a 5h window.
-4. 0.2.0 secrets + hardening (bypass gaps HUSKY=0/LEFTHOOK=0/stash, `git push -n` false positive, test-gaming rules, onFailure block, escape-hatch line, plugin hooks/scripts protected), each with a before/after number.
-5. New-dependency gate; baseline/ratchet; review gate only if it beats the single reviewer per token.
+1. Owner reviews and merges 0.2.0; release steps below. Then one live coordinator run through the new loop on a small slice.
+2. Re-run the static corpus against 0.2.0: precision per rule for `test-removed`, `tautological-assert`, `assert-swallowed`, `dependency-added` and the guard denials. Demote anything noisy.
+3. `nonslop stats` on kabl and aegis after a week of use: tokens and review rounds per merged PR.
+4. A/B harness for caveman and ponytail (haiku), as planned.
+5. Only with numbers: baseline/ratchet for `check --all`; evidence ledger; review gate beyond the single reviewer.
 
 ## Waiting on owner
-- Add CI step `python tests/test_cli_init.py` to `.github/workflows/ci.yml` (agents are blocked from CI config).
+- Add CI step `python tests/test_hooks.py` to `.github/workflows/ci.yml`, and `hooks = "python3 tests/test_hooks.py"` to `[commands]` in `.nonslop.toml` (agents edit neither).
+- aegis and kabl after updating: pull requests without CI need `[merge] allow_no_ci = true`; decide `[guard] secret_read` per project.
 - aegis `[slop]` tuning (BLE001, T201); kabl allow rule, Rust 1.100.0, kabl_agents sink; pull aegis and kabl checkouts.
+
+## Decisions
+- Taken from the open-gsd projects as ideas, no text: argv parsing of commands, commit-pinned verdicts, bounded review rounds, verify independent of the builder, recovery from git state, failure-first gate output.
+- Not taken: phase pipelines and planning artifacts, SQLite/daemon state, orchestrator-lands and auto-merge, full shell emulation, injection and base64 scanners, commit-message validator, review panels and skeptic agents, code index/graph. Reason: prose- or state-heavy, unmeasured, or solved by PR-per-slice.
+- Not built, on purpose: evidence ledger (not verified that Claude Code's PostToolUse payload carries a command's exit code; `slice verify` runs the gates itself, which needs no such record); baseline/ratchet (slopstop judges added lines only, so there is no legacy backlog to baseline until `check --all` becomes a gate).
+- A release after `stop_retries` stays (an agent must not loop forever) but is recorded and blocks the coordinator's merge.
 
 ## Hard-won facts
 - Release: bump version + CHANGELOG in the PR → squash-merge → green main CI → owner runs `claude plugin tag --push .` (auto mode refuses it for agents) → `claude plugin marketplace update nonslop` and `claude plugin update nonslop@nonslop`, both also with `CLAUDE_CONFIG_DIR=/home/stcksmsh/.claude-alt`.
-- Once `.nonslop.toml` exists the pre hook denies every Edit/Write/cp of it (matched by file name anywhere); create config only via `init --from`.
+- Config can only be created via `init --from`: every Edit/Write and (since 0.2.0, for real) every shell write to `.nonslop.toml` is denied.
 - Agents cannot edit `.github/workflows/**`; CI changes go to the owner.
-- `gh pr merge --delete-branch` fails while a builder worktree holds the branch; delete the remote branch and `git worktree remove --force` instead. Local squash-merged branches need `-D`, which is denied: leave them.
+- `gh pr merge --delete-branch` fails while a builder worktree holds the branch: delete the remote branch, then `git worktree remove <path>` without `--force`; if it refuses, something is unsaved. Local squash-merged branches need `-D`, which is denied: leave them.
 - Max subscription only: no API spend. `--bare` needs an API key; measure with `claude -p --output-format stream-json`.
 - kabl sessions run on `~/.claude-alt`, aegis on `~/.claude`. Plugins load at session start.
-- The worktree guard reads paths containing `eval` as shell `eval`; use `git grep` for `eval/`.
 - `gh pr edit` fails; use `gh api -X PATCH repos/stcksmsh/nonslop/pulls/<n> -F body=@file`.
 - The auto-mode classifier refuses widening a project's permission allow list.
+- Transcripts: `~/.claude*/projects/<path with - for />/<session>.jsonl` plus `<session>/subagents/agent-*.jsonl`; one API response spans several lines with the same `message.id`.

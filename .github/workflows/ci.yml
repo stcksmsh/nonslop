@@ -41,5 +41,9 @@ jobs:
       - name: init --from test
         run: python tests/test_cli_init.py
 
+      - name: Hook payload and slice command tests
+        # The tests commit in throwaway repositories and set their own identity there.
+        run: python tests/test_hooks.py
+
       - name: slopstop selftest
         run: python bin/nonslop slop selftest

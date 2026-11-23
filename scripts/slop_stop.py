@@ -15,8 +15,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import slices  # noqa: E402
 from log_event import append  # noqa: E402
-from nonslop_config import load_config, read_hook_input, start_dir, unchanged_since_start  # noqa: E402
+from nonslop_config import git_out, load_config, read_hook_input, read_json, start_dir, unchanged_since_start  # noqa: E402
 
 SLOP = Path(__file__).resolve().parent.parent / "tools" / "slopstop" / "slop.py"
 
@@ -49,7 +50,17 @@ def main() -> int:
         [sys.executable, str(SLOP), "hook", "stop"], input=json.dumps(hook_input), text=True, check=False
     )
     log("block" if result.returncode == 2 else "pass", branch=branch, code=result.returncode)
+    note_release(config, cwd, branch)
     return result.returncode
+
+
+def note_release(config: dict, cwd: Path, branch: str) -> None:
+    """slopstop lets an agent go after repeated identical findings and notes it in its own state.
+    Copy that into the slice record, which outlives the worktree."""
+    code, git_dir = git_out(["rev-parse", "--path-format=absolute", "--git-dir"], cwd)
+    released = read_json(Path(git_dir) / "slopstop" / "released.json").get(branch) if code == 0 else None
+    if released and released.get("sha") == git_out(["rev-parse", "HEAD"], cwd)[1]:
+        slices.touch(config, cwd, branch, status="released", slop_released=released)
 
 
 if __name__ == "__main__":

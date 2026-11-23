@@ -63,3 +63,38 @@ Selftest after these: 38 passed, 0 failed, 3 skipped (detekt, biome, cppcheck mi
   call record. All three assertions fail on the previous `slop.py`.
 
 Selftest after these: 41 passed, 0 failed, 3 skipped (detekt, biome, cppcheck missing).
+
+## 2026-11-23: commands read as argv, test gaming, crash policy, release marker
+
+New file `shellcmd.py` (stdlib only, imports nothing from nonslop). `slop.py`, `selftest.py`:
+
+- **Bug fix.** `pre_verdict` stripped `./` from a token with `lstrip("./")`, which also removed the
+  leading dot of every dotfile, so `.nonslop.toml`, `.slop.toml`, `.claude/settings.json` and
+  `.github/workflows/**` were never matched for shell writes. Fixed with `removeprefix("./")`.
+- `BASH_BYPASS` and `BASH_WRITE` (regexes over the whole command line) are gone. `bash_verdict` parses the
+  command with `shellcmd.parse` into simple commands (quotes, heredoc bodies and comments handled;
+  `$(...)`, backticks, `sh -c`, `eval` and runner prefixes unwrapped) and decides per command:
+  `bypass_reason` (hook-skipping env vars, `-c core.hooksPath`, `git config core.hooksPath`, `--no-verify`
+  and its accepted abbreviations on commit/push/merge/rebase/am/cherry-pick/revert/pull, `-n` clusters on
+  commit only, `chmod -x` on hooks) and `write_targets` (redirections, tee/mv/rm/..., destination of
+  cp/ln/install, `sed -i`, `perl -i`, `dd of=`, `git checkout|restore|rm|mv`, inline interpreter code that
+  writes). A denial names what matched. `git push -n` and flags inside a commit message no longer deny.
+- `PROTECTED_DEFAULT` grew: test-runner and formatter configs, `.husky/**`, slopstop's own state files.
+  `gate_scripts()` adds the shell scripts and task files named in `.nonslop.toml` `[commands]`.
+  `MANIFEST_LINT["package.json"]` also covers `test` scripts.
+- Test checks: `real_asserts()` ignores comments and `TAUTOLOGY` matches; new rules `tautological-assert`
+  (block), `test-removed` (block, also in the pre hook), `assert-swallowed` (advisory). `SUPPRESS` also
+  matches `.only`/`.todo`, `fit`/`fdescribe`, `pytest.skip(`, unprefixed `pytest.mark.skip`, `#[ignore`.
+- New rule `dependency-added` (advisory): direct dependencies a manifest gained relative to the base.
+- Crash policy: `hook_crashed()`. Pre denies in an opted-in repo and logs `decision: crash`; post and stop
+  let the agent continue. `SLOP_FAIL_OPEN=1` disables the deny. The catch lists exception classes
+  (`INTERNAL_ERRORS`) instead of `Exception`. A malformed `tool_input` raises instead of passing.
+- `record_release()` writes `.git/slopstop/released.json` (branch, commit, findings) when Stop lets an
+  agent go after `stop_retries`.
+- Selftest: seven new cases, 30 pre-hook command checks (17 deny, 9 allow, 4 test edits), crash-policy
+  and release checks, and a completeness check: every rule id `slop.py` or `semantic.py` can emit must be
+  wanted by a case (four tool- or size-dependent ids are listed as not seeded). The dotfile, `-nm`,
+  `git -C`, `-c core.hooksPath`, `HUSKY=0`, `git push -n`, `assert True` and renamed-test checks all fail
+  on the previous `slop.py`.
+
+Selftest after these: 84 passed, 0 failed, 3 skipped (detekt, biome, cppcheck missing).
