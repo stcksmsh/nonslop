@@ -10,6 +10,9 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 - New skill `/nonslop:wire`: wires the current repo to nonslop (finds the real commands, runs init, fills
   `.nonslop.toml`, runs doctor, dry-runs the slop checks on recent merged PRs, opens a draft PR). The README
   leads with it; the manual steps stay as a fallback.
+- `nonslop init --from <file.toml>` writes the given file (checked with tomllib) instead of the template when
+  `.nonslop.toml` is missing. An existing `.nonslop.toml` is still kept. This lets the skill draft the config
+  outside the protected file name and dry-run it before the repo is opted in.
 
 ## 0.1.4
 
