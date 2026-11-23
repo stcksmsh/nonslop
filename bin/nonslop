@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """nonslop: a workflow for AI coding agents that does not ship slop.
 
-  nonslop init            wire the current project (.nonslop.toml, .claude/settings.json, .gitignore)
+  nonslop init [--from F] wire the current project (.nonslop.toml, .claude/settings.json, .gitignore);
+                          --from writes F instead of the template when .nonslop.toml is missing
   nonslop doctor          show what is wired and which tools are present
   nonslop check [args]    what an agent would be told now: static slop checks, then the project's gates
                           (args go to `slop check`: --all, --staged, --base <ref>, --fast, --json)
@@ -85,13 +86,23 @@ def ensure_ignored(root: Path, entry: str) -> None:
     print(f"  ignore  {entry}")
 
 
-def cmd_init(_args: list[str]) -> int:
+def cmd_init(args: list[str]) -> int:
+    source = TEMPLATES / "nonslop.toml"
+    if args[:1] == ["--from"] and len(args) == 2:
+        source = Path(args[1])
+        try:
+            with source.open("rb") as handle:
+                tomllib.load(handle)
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            sys.exit(f"nonslop: --from {source}: {error}")
+    elif args:
+        sys.exit("usage: nonslop init [--from <file.toml>]")
     root = project_root()
     config = root / ".nonslop.toml"
     if config.exists():
         print(f"  keep    {config} (already exists)")
     else:
-        shutil.copyfile(TEMPLATES / "nonslop.toml", config)
+        shutil.copyfile(source, config)
         print(f"  create  {config}")
     merge_settings(root / ".claude" / "settings.json")
     ensure_ignored(root, ".claude/tmp/")
