@@ -14,7 +14,8 @@ clean = ""
 # allow_suppress = ["clippy::too_many_arguments"]   # suppressions agents may still add
 # exclude = ["docs/**"]                             # extends the built-in excludes
 # warn = ["file-too-large"]                         # downgrade a rule to advisory
-# block = []                                        # upgrade a rule to blocking
+# block = ["dependency-added"]                      # upgrade a rule to blocking
+# protected = ["scripts/ci/**"]                     # more files agents may not edit
 # disable = []                                      # drop a rule
 # stop_retries = 2
 
@@ -30,8 +31,29 @@ gate_timeout_s = 1800
 auto_clean = false
 # Refuse to finish below this much free disk. 0 disables.
 min_free_gb = 0
-# Identical failures in a row before the agent is allowed to stop anyway.
+# Times the same failures may come back before the agent is let go. That is recorded as
+# `released` in the slice record, not as done.
 stop_retries = 2
+
+# [done.expect]
+# A pattern a gate's output must contain, so a command that exits 0 having run nothing fails.
+# test = "[1-9][0-9]* passed"
+
+[verify]
+# Gates `nonslop slice verify` runs on a slice's pushed head in a fresh worktree. Empty: [done].run.
+run = []
+
+[merge]
+# Before the coordinator may run `gh pr merge` on a slice branch, a hook checks that the slice is
+# proven at its current head. The owner merging by hand is never checked.
+guard = true
+require = ["verify", "review", "ci"]
+# A pull request with no CI checks at all is refused unless this is true.
+allow_no_ci = false
+
+[guard]
+# Deny reading secret files (.env, .secrets, private keys) into the conversation.
+secret_read = true
 
 [state]
 # The single handover file the coordinator keeps. Printed at every session start.
