@@ -5,44 +5,51 @@ description: Wire the current repository to nonslop - run init, fill .nonslop.to
 
 # Wire
 
-Wire this repo to nonslop. You propose; the owner merges. Never commit to the default branch. Never merge. Never install anything without asking. Never add permission allow rules beyond what `init` merges.
+Wire this repo to nonslop. You propose; the owner merges. Never commit to the default branch. Never merge. Never install anything without asking. Never add permission allow rules beyond what `init` merges. One plain command per shell call (no `&&`, `;`, pipes, `$(...)`). No `rm -rf`.
 
-NONSLOP means `bin/nonslop` in this plugin. This skill's base directory (given when it loaded) is `<plugin>/skills/wire`, so use `<base>/../../bin/nonslop`. Do not hard-code a user path.
+If a hook blocks writing `.nonslop.toml` or `.claude/settings.json`, or reports `gate-tampered` on them, stop and report to the owner. Never revert or work around it.
+
+NONSLOP: this skill's base directory (given when it loaded) is `<plugin>/skills/wire`. Run `realpath <base>/../../bin/nonslop` once and use that absolute path. Run every NONSLOP call from the target repo root (or the dry-run worktree). Do not hard-code a user path.
 
 ## 1. Orient
 
-- Confirm `git rev-parse --show-toplevel` works. Else stop.
-- Default branch: `git symbolic-ref refs/remotes/origin/HEAD` (or `git remote show origin`). Then `git fetch origin`.
+- `git rev-parse --show-toplevel` must work, else stop. This is `<repo>`.
+- `git symbolic-ref refs/remotes/origin/HEAD` gives the default branch. `git fetch origin`.
 - If `.nonslop.toml` exists, stop and offer `NONSLOP doctor`.
-- Find the real commands (test, lint, build, clean) in: `.github/workflows/*`, manifests (pyproject, Cargo.toml, package.json, go.mod, Makefile, justfile), CLAUDE.md, AGENTS.md, CONTRIBUTING. Prefer what CI runs. Remember where each came from.
-- `gh pr list --state merged --limit 10` shows the branch naming of agent PRs; use it for `[done].branch_prefix` (default `claude/`).
+- Find the real commands (test, lint, build, clean) in `.github/workflows/*`, manifests (pyproject, Cargo.toml, package.json, go.mod, Makefile, justfile), CLAUDE.md, AGENTS.md, CONTRIBUTING. Prefer what CI runs. Note where each came from.
+- `gh pr list --state merged --limit 10` shows the branch naming of agent PRs, for `[done].branch_prefix` (default `claude/`).
 
 ## 2. Init
 
-Branch first: `git checkout -b <prefix>wire-nonslop origin/<default>`. Then run `NONSLOP init`.
+`git checkout -b nonslop-wire origin/<default>`. The name is fixed and does not use the slice prefix: Stop checks only judge `branch_prefix` branches, and they would flag the new protected files as `gate-tampered`. Then `NONSLOP init`.
 
 ## 3. Fill `.nonslop.toml`
 
 Take keys only from `templates/nonslop.toml` and `examples/kabl.nonslop.toml` in the plugin dir. Do not invent keys.
 
-- `[commands]`: from step 1. No shell syntax (pipes, `&&`, `VAR=x`); wrap complex ones in a script.
-- `[done]`: `branch_prefix`; `run` = command keys that CI does not already run on every PR.
+- `[commands]`: from step 1. No shell syntax; wrap complex ones in a script.
+- `[done]`: `branch_prefix`; `run` = command keys CI does not already run on every PR.
 - `[state].file`: the project's handover file, or leave the default.
 - `[rules].notes`: short project facts every agent needs.
 
-If a hook blocks writing `.nonslop.toml` or `.claude/settings.json`, stop and ask the owner. Do not work around it.
-
 ## 4. Doctor
 
-Run `NONSLOP doctor`. Report missing optional tools. Install nothing.
+`NONSLOP doctor`. Report missing optional tools. Install nothing.
 
 ## 5. Dry run
 
-For each of the last ~5 merged PRs (`gh pr list --state merged --limit 5 --json number,mergeCommit`): make a detached worktree under `.claude/tmp/` at the merge commit, run `NONSLOP slop check --base <merge>^1 --json` in it, then remove the worktree. Read-only. Summarise findings per rule. For rules that look noisy, ask the owner numbered questions proposing `[slop] warn` or `disable` entries. Apply none without his answer.
+`gh pr list --state merged --limit 5 --json number,mergeCommit`. For each PR, `<oid>` is `.mergeCommit.oid`; skip a null one. Base is `<oid>^1` (wrong for rebase-merged PRs: accept and note it). Per PR, as separate commands:
+
+1. `git worktree add --detach <repo>/.claude/tmp/wire/<pr> <oid>`
+2. `cp <repo>/.nonslop.toml <repo>/.claude/tmp/wire/<pr>/.nonslop.toml` so the proposed config is measured.
+3. From inside that worktree: `NONSLOP slop check --base <oid>^1 --json`
+4. `git worktree remove --force <repo>/.claude/tmp/wire/<pr>`
+
+Then `git worktree prune`. Summarise findings per rule. For noisy rules, ask the owner numbered questions proposing `[slop] warn` or `disable` entries. Apply none without his answer.
 
 ## 6. Commit
 
-Add only `.nonslop.toml`, `.claude/settings.json`, `.gitignore`, by name. Commit, push, `gh pr create --draft`. Delete your scratch under `.claude/tmp/`.
+`git status --short`. Add by name only the files that changed among `.nonslop.toml`, `.claude/settings.json`, `.gitignore`. If `.claude/settings.json` is git-ignored here, stop and ask. Commit, push, `gh pr create --draft`. Remove leftover scratch with `git worktree remove --force <path>` then `git worktree prune`, and `rmdir` the empty `.claude/tmp/wire/`.
 
 ## 7. Report
 
