@@ -37,7 +37,7 @@ Write `<repo>/.claude/tmp/wire/draft.toml` (not named `.nonslop.toml`) from `tem
 3. From inside that worktree: `NONSLOP slop check --base <oid>^1 --json`
 4. `git worktree remove --force <repo>/.claude/tmp/wire/<pr>`
 
-Then `git worktree prune`. Summarise findings per rule. For noisy rules, ask the owner numbered questions proposing `[slop] warn` or `disable` entries. Apply answers to the draft only. Never weaken a gate without his answer.
+The copied draft always shows `gate-tampered` on `.nonslop.toml` in the dry run; ignore that one finding, it is an artifact. Then `git worktree prune`. Summarise findings per rule. For noisy rules, ask the owner numbered questions proposing `[slop] warn` or `disable` entries. Apply answers to the draft only. Never weaken a gate without his answer.
 
 ## 4. Init and PR
 
@@ -45,7 +45,7 @@ Then `git worktree prune`. Summarise findings per rule. For noisy rules, ask the
 2. `NONSLOP init --from <repo>/.claude/tmp/wire/draft.toml`
 3. `NONSLOP doctor`. Report missing optional tools; install nothing.
 4. `git status --short`. Add by name only the changed files among `.nonslop.toml`, `.claude/settings.json`, `.gitignore`. If `.claude/settings.json` is git-ignored here, stop and ask.
-5. Commit, push, `gh pr create --draft`.
+5. Write the commit message to `.claude/tmp/wire/commit.txt` and the PR body to `.claude/tmp/wire/pr.md`. Then `git commit -F <repo>/.claude/tmp/wire/commit.txt`, `git push -u origin nonslop-wire`, `gh pr create --draft --body-file <repo>/.claude/tmp/wire/pr.md`.
 6. Cleanup: `git worktree remove --force <path>` for any leftover, `git worktree prune`, then `rmdir` the empty dirs under `.claude/tmp/wire/` after removing `draft.toml` with `rm`.
 
 ## 5. Report
