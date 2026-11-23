@@ -44,12 +44,26 @@ SECRET_EXEMPT = re.compile(r"\.(example|sample|template|dist|defaults|pub)$", re
 READERS = {"cat", "less", "more", "head", "tail", "grep", "egrep", "fgrep", "rg", "ag", "awk", "sed", "cut", "sort",
            "uniq", "strings", "xxd", "od", "hexdump", "base64", "nl", "tac", "bat", "jq", "yq", "source", ".",
            "diff", "cmp", "tee", "envsubst", "dotenv"}
+INTERPRETER = re.compile(r"python(3(\.\d+)?)?|node|deno|bun|ruby|perl|php|sh|bash|zsh|dash")
+# a file name inside inline code: a quoted literal, or a word between shell separators
+CODE_NAME = re.compile(r"""'([^']+)'|"([^"]+)"|([^\s;&|<>'"`]+)""")
+PATH_LIKE = re.compile(r"[\w./~@+-]+")
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 
 def is_secret(path: str) -> bool:
     name = path.rstrip("/").rsplit("/", 1)[-1]
     return bool(SECRET_NAME.match(name)) and not SECRET_EXEMPT.search(name)
+
+
+def interpreter_secret(args: list[str]) -> str | None:
+    """A secret file named anywhere in an interpreter's arguments: a script argument, or a name
+    inside inline code. A script that opens the file without naming it here cannot be seen."""
+    for arg in args:
+        names = [arg] + [next(g for g in m.groups() if g) for m in CODE_NAME.finditer(arg)]
+        if hit := next((n for n in names if PATH_LIKE.fullmatch(n) and is_secret(n)), None):
+            return hit
+    return None
 
 
 def inside(path: Path, parent: Path | None) -> bool:
@@ -257,6 +271,8 @@ class Guard:
                 operands = [a for a in simple.argv[1:] if not a.startswith("-")] + simple.reads
                 if hit := next((a for a in operands if is_secret(a)), None):
                     return "secret-read", self.secret_message(hit)
+            if secrets and INTERPRETER.fullmatch(simple.prog) and (hit := interpreter_secret(simple.argv[1:])):
+                return "secret-read", self.secret_message(hit)
         return None
 
     @staticmethod
