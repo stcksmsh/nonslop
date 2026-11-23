@@ -41,6 +41,16 @@ Restart Claude Code afterwards. Updates reach every wired project at once. `nons
 
 ## Wire a project
 
+In the project, in Claude Code:
+
+```
+/nonslop:wire
+```
+
+Claude reads your CI, manifests and agent docs, runs `nonslop init`, fills `.nonslop.toml` with the real commands, runs `doctor`, dry-runs the slop checks on your last merged PRs, asks you about noisy rules, and opens a draft PR with the wiring. Merge it, then restart Claude Code in that repo.
+
+Manual fallback:
+
 ```sh
 cd my-project
 /path/to/nonslop/bin/nonslop init     # .nonslop.toml, .claude/settings.json (permissions merged; only retired allow rules removed), .gitignore

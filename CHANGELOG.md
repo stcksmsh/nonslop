@@ -5,6 +5,12 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.1.5
+
+- New skill `/nonslop:wire`: wires the current repo to nonslop (finds the real commands, runs init, fills
+  `.nonslop.toml`, runs doctor, dry-runs the slop checks on recent merged PRs, opens a draft PR). The README
+  leads with it; the manual steps stay as a fallback.
+
 ## 0.1.4
 
 - slopstop logs every hook call with its wall time, and every finding it reports with rule, severity and
