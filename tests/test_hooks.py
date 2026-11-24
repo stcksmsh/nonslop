@@ -292,6 +292,22 @@ def test_stats(repo: Path) -> None:
           and "released" in data.get("hook_logs", {}).get("done-check", {}), result.stdout[:600] + result.stderr)
 
 
+def test_merge_policy(work: Path) -> None:
+    def rules(value: str | None) -> str:
+        project = work / f"policy-{value}"
+        project.mkdir()
+        body = "" if value is None else f'[merge]\ncoordinator = "{value}"\n'
+        (project / ".nonslop.toml").write_text(body, encoding="utf-8")
+        return nonslop(project, "rules").stdout
+
+    auto, absent, ask, bad = rules("auto"), rules(None), rules("ask"), rules("yes")
+    check("auto: session start says the coordinator may merge", "coordinator may merge" in auto and "WARNING" not in auto, auto[-400:])
+    check("absent or ask: merges wait for the owner",
+          all('wait for the owner\'s "merge <n>"' in text and "WARNING" not in text for text in (absent, ask)))
+    check("unknown value: one warning, treated as ask",
+          bad.count("WARNING") == 1 and "'yes'" in bad and "wait for the owner" in bad and "coordinator may merge" not in bad, bad[-400:])
+
+
 def main() -> int:
     scratch_root = ROOT / ".claude" / "tmp"
     scratch_root.mkdir(parents=True, exist_ok=True)
@@ -303,6 +319,7 @@ def main() -> int:
         test_slices(repo, tree)
         test_gates(work)
         test_stats(repo)
+        test_merge_policy(work)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     print(f"\n{passed} passed, {failed} failed")

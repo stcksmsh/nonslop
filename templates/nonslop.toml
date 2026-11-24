@@ -50,6 +50,10 @@ guard = true
 require = ["verify", "review", "ci"]
 # A pull request with no CI checks at all is refused unless this is true.
 allow_no_ci = false
+# Who merges. "ask": the coordinator merges only when the owner says "merge <n>". "auto": the
+# coordinator merges itself once verify, review and CI pass (the guard above still checks; it also
+# applies when the owner says "merge <n>"). Subagents never merge. Anything else counts as "ask".
+coordinator = "ask"
 
 [guard]
 # Deny reading secret files (.env, .secrets, private keys) into the conversation.

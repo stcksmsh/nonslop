@@ -35,6 +35,17 @@ def render_commands(config: dict) -> str:
     return section("Project commands (use these exactly, do not substitute your own)", "\n".join(lines))
 
 
+def merge_policy_line(config: dict) -> str:
+    value = config.get("merge", {}).get("coordinator", "ask")
+    if value == "auto":
+        return ("- Merge policy: the coordinator may merge a slice once verify, review and CI pass "
+                "(the merge guard checks). Subagents never merge.")
+    line = '- Merge policy: merges wait for the owner\'s "merge <n>". Subagents never merge.'
+    if value != "ask":
+        line += f' WARNING: [merge] coordinator = {value!r} is not "ask" or "auto"; treated as "ask".'
+    return line
+
+
 def render_project_rules(config: dict) -> str:
     env = config.get("env", {})
     prefix = config.get("done", {}).get("branch_prefix", "claude/")
@@ -49,6 +60,7 @@ def render_project_rules(config: dict) -> str:
             f"- Never play audio on the default output. Run anything that makes sound with "
             f"`env PIPEWIRE_NODE={sink} PULSE_SINK={sink} ...` and prefer offline renders."
         )
+    lines.append(merge_policy_line(config))
     lines.extend(f"- {note}" for note in config.get("rules", {}).get("notes", []))
     return section("This project", "\n".join(lines))
 

@@ -5,6 +5,21 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.2.2
+
+- **New: `[merge] coordinator = "ask" | "auto"`.** `"ask"` (the default, and what a project without the
+  key gets) keeps today's rule: the coordinator merges only when the owner says "merge <n>". `"auto"`
+  lets the coordinator merge a slice itself once `nonslop slice verify` passed, the review is clean or
+  minor at the current head, and CI is green; the merge guard is unchanged and still refuses otherwise,
+  including the `allow_no_ci` rule. Session start prints the policy; an unknown value prints one warning
+  and counts as `"ask"`. Subagents never merge.
+- **Changed: the coordinator no longer lists bare numbered decisions.** Routine status says only
+  "N decisions pending, ask and I'll list them". When asked, or when one blocks work, each decision is
+  given in full: the question, the options with consequences, a recommendation, a one-line answer format.
+
+Upgrade: optional. nonslop's own `.nonslop.toml` should set `[merge] coordinator = "auto"` and drop the
+prose note about the coordinator merging from `[rules].notes`.
+
 ## 0.2.1
 
 Two holes a review of 0.2.0 found.
