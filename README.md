@@ -138,4 +138,3 @@ eval/              how slopstop and a competitor were measured: reports, seeds, 
 ## Licensing
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
-The two vendored skills keep their own MIT licenses; see `THIRD_PARTY.md`.
