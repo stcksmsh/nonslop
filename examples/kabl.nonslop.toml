@@ -31,7 +31,6 @@ audio_sink = "kabl_agents"
 
 [rules]
 notes = [
-  "Caveman and Ponytail run at ultra in this project, from the first message and after every context clear.",
   "Confirm with `pactl list sink-inputs` that your streams are on `kabl_agents`. Never change the default sink.",
   "Use a scratch REAPER resource directory. Never touch the owner's REAPER configuration.",
   "Golden audio renders stay bit-identical unless the slice says otherwise. Say how you checked.",

@@ -116,7 +116,7 @@ tools/slopstop/    static slop checks and the shell-command reader, self-contain
 tests/             hook payload tests and the slice commands end to end
 rules/core.md      the shared rules every agent receives
 agents/            builder, reviewer
-skills/            coordinator, caveman, ponytail
+skills/            coordinator
 hooks/hooks.json   Claude Code hook wiring
 templates/         what `nonslop init` puts in a project
 examples/          a real project's .nonslop.toml

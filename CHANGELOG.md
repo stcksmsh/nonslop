@@ -5,6 +5,18 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.2.3
+
+- **Removed: the bundled `caveman` and `ponytail` skills.** Each cost about 1,000 input tokens on every
+  request; caveman measured only about 5% shorter than a plain "Answer concisely.", and ponytail's gains
+  were self-reported.
+- **Changed: a short `Style` block in `rules/core.md` replaces them.** Every agent in a wired project sees
+  it at start. It merges the former "Writing" and "Laziest thing that works" sections: terse replies, the
+  least code that works, and never cutting validation, error handling, security or tests.
+
+Upgrade: drop caveman/ponytail lines from project `.nonslop.toml` notes (kabl has one) and from global
+`CLAUDE.md` files. Skill invocations of `nonslop:caveman` and `nonslop:ponytail` no longer exist.
+
 ## 0.2.2
 
 - **New: `[merge] coordinator = "ask" | "auto"`.** `"ask"` (the default, and what a project without the
