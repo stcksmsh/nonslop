@@ -28,6 +28,10 @@ auto_clean = false
 min_free_gb = 0
 stop_retries = 2
 
+[merge]
+# The owner lets the coordinator merge once verify, review and CI pass (2026-11-24).
+coordinator = "auto"
+
 [state]
 # The single handover file the coordinator keeps. Printed at every session start.
 file = "docs/STATE.md"
@@ -42,6 +46,5 @@ notes = [
   "Scripts are stdlib-only Python 3.11+. tools/slopstop/ stays self-contained: nothing in it imports from the rest of nonslop.",
   "Every edit under tools/slopstop/ gets an entry in tools/slopstop/NONSLOP-CHANGES.md; every rule change gets a selftest case that fails on the old code.",
   "A change that installed copies must receive bumps `version` in .claude-plugin/plugin.json and adds a CHANGELOG.md entry in the same PR; the release steps are in docs/STATE.md.",
-  "The owner allows the coordinator to merge nonslop PRs once CI is green and the reviewer verdict is clean or minor (2026-11-21). Builders never merge.",
   "Set PR bodies with `gh api -X PATCH repos/stcksmsh/nonslop/pulls/<n> -F body=@<file>`; `gh pr edit` fails on this machine.",
 ]
