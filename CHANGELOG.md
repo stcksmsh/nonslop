@@ -5,6 +5,25 @@ number changes. Tag a release with `claude plugin tag --push` (creates `nonslop-
 
 "Upgrade" lists what a wired project must change by hand after updating, if anything.
 
+## 0.2.1
+
+Two holes a review of 0.2.0 found.
+
+- **Fixed: `[guard] secret_read` was bypassed by interpreters.** `python3 -c "print(open('.env').read())"`
+  and `node -e "require('fs').readFileSync('.env')"` were allowed, because only file readers such as
+  `cat` and `grep` were checked. python, python3, python3.x, node, deno, bun, ruby, perl, php, sh, bash,
+  zsh and dash are now denied when their arguments name a secret file anywhere: in inline code (`-c`,
+  `-e`, `-r`) or as a script argument (`python3 load.py .env`). Exempt names (`.env.example`) stay
+  allowed, and `secret_read = false` turns this check off too. Naming a secret without reading it
+  (`echo .env >> .gitignore`, `git check-ignore .env`) is still allowed. Limit: a script that opens `.env`
+  itself, without the name on its command line, cannot be seen and is not denied.
+- **Fixed: `*` in slice scope crossed directories.** A brief scoped to `src/*.py` let
+  `src/private/deep.py` through the Stop finish check and `nonslop slice verify`. `*`, `?` and `[...]`
+  now match within one path segment; a `**` segment matches zero or more segments. A bare directory
+  (`src` or `src/`) still covers everything under it, and an exact path still matches itself.
+
+Upgrade: nothing. A brief that relied on `*` reaching into subdirectories needs `**` instead.
+
 ## 0.2.0
 
 Gates and workflow, after reading how the open-gsd projects handle the same problems and probing

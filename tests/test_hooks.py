@@ -129,6 +129,14 @@ def test_guard(repo: Path) -> None:
     for command in ["git reset --hard HEAD~1", "git stash", "git clean -fd", "git checkout -- .", "git restore .",
                     "gh pr merge 3 --squash", "gh api -X PUT repos/o/r/pulls/3/merge"]:
         check(f"guard denies a subagent `{command}`", '"deny"' in bash(command, agent="a1"), bash(command, agent="a1"))
+    interpreter_reads = ["python3 -c \"print(open('.env').read())\"", "node -e \"require('fs').readFileSync('.env')\"",
+                         "bash -c 'cat .env'", "python3.11 load.py .env", "perl -e 'open(F, \".env\")'"]
+    for command in interpreter_reads:
+        out = bash(command)
+        check(f"guard denies interpreter read `{command}`", '"deny"' in out and "secret" in out, out)
+    for command in ["echo .env >> .gitignore", "python3 -c \"print(1)\"", "python3 -c \"print(d.key)\"",
+                    "node -e \"require('fs').readFileSync('.env.example')\"", "git check-ignore .env", "ls -a"]:
+        check(f"guard allows `{command}`", bash(command).strip() == "", bash(command))
     out = bash("git commit --amend -m x")
     check("guard denies amending a pushed commit", '"deny"' in out, out)
     out = bash("git rebase origin/main")
@@ -145,6 +153,12 @@ def test_guard(repo: Path) -> None:
     unwired = repo.parent / "unwired"
     unwired.mkdir()
     git(unwired, "init", "-q")
+    toml = repo / ".nonslop.toml"
+    saved = toml.read_text(encoding="utf-8")
+    toml.write_text(saved + "\n[guard]\nsecret_read = false\n", encoding="utf-8")
+    out = bash(interpreter_reads[0])
+    toml.write_text(saved, encoding="utf-8")
+    check("guard secret_read = false also turns off the interpreter check", out.strip() == "", out)
     check("guard is silent in a project without .nonslop.toml", guard(unwired, "Bash", {"command": "git push --force"}) == "")
 
 
@@ -172,6 +186,11 @@ def test_slices(repo: Path, tree: Path) -> None:
     check("brief lint catches a wrong prefix", any("prefix" in p or "start with" in p for p in problems), problems)
     _, problems = slices.parse_brief("# x\n\n## Task\nt\n\n## Branch\nclaude/x\n\n## Scope\nIn: a\n\n## Done means\n1. works\n", "claude/")
     check("brief lint catches an uncheckable done item", any("checkable" in p for p in problems), problems)
+    check("scope: `*` stays inside one directory", not slices.in_scope("src/private/deep.py", ["src/*.py"]))
+    for path, glob in [("src/a.py", "src/*.py"), ("src/x/b.py", "src/**/*.py"), ("src/a.py", "src/**/*.py"),
+                       ("src/x/y.txt", "src/"), ("src/x/y.txt", "src"), ("src/a.py", "src/a.py")]:
+        check(f"scope: `{glob}` covers {path}", slices.in_scope(path, [glob]))
+    check("scope: `?` stays inside one directory", not slices.in_scope("src/a/b", ["src/a?b"]))
     check("scope: file, directory and outsider",
           slices.outside_scope(fields, ["src/widget.py", "tests/test_widget.py", "src/a.py"]) == ["src/a.py"])
 

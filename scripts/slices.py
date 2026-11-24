@@ -96,10 +96,19 @@ def parse_brief(text: str, prefix: str) -> tuple[dict, list[str]]:
     return fields, problems
 
 
+def glob_match(parts: list[str], pattern: list[str]) -> bool:
+    """Segment-wise glob: `*`, `?` and `[...]` stay inside one segment; a `**` segment spans zero or more."""
+    if not pattern:
+        return not parts
+    if pattern[0] == "**":
+        return any(glob_match(parts[i:], pattern[1:]) for i in range(len(parts) + 1))
+    return bool(parts) and fnmatch.fnmatch(parts[0], pattern[0]) and glob_match(parts[1:], pattern[1:])
+
+
 def in_scope(path: str, globs: list[str]) -> bool:
     for glob in globs:
         bare = glob.rstrip("/")
-        if path == bare or path.startswith(bare + "/") or fnmatch.fnmatch(path, glob):
+        if path == bare or path.startswith(bare + "/") or glob_match(path.split("/"), bare.split("/")):
             return True
     return False
 
