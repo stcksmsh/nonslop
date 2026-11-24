@@ -9,20 +9,22 @@ One updateable Claude Code plugin that keeps agent-written code clean in all of 
 - 0.2.1 (#19, 1248920): interpreter secret reads denied; scope globs stay inside one path segment. First live run of the 0.2.0 loop.
 - 0.2.2 (#20, 3f73673): `[merge] coordinator = "ask"|"auto"`; owner decisions given in full, never by ID.
 - #21: nonslop itself sets `coordinator = "auto"`.
-- Tags nonslop--v0.2.0/0.2.1/0.2.2 pushed; 0.2.2 installed in `~/.claude` and `~/.claude-alt`.
+- 0.2.3 (#23, ca9fda4): caveman and ponytail skills deleted; a short Style block in rules/core.md replaces them (owner, 2026-11-24). Same block in global `~/.claude/CLAUDE.md` and `~/.claude-alt/CLAUDE.md`.
+- Tags nonslop--v0.2.0–0.2.3 pushed; 0.2.3 installed in `~/.claude` and `~/.claude-alt`.
 
 ## In flight
 - claude/static-corpus (PR #13, draft, behind main): `eval/static/` replay and seeded recall. Needs main merged in before the 0.2.x re-run.
 
 ## Next
-1. 0.2.3 hardening (pending owner): heredoc secret reads (`python3 - <<EOF`), unwrap `uv run`/`npx`/`pnpm exec`, CHANGELOG note that `.pem`/`.key` interpreter args are refused, log allowed merges in the merge guard, no "commits on no remote" denial for a squash-merged branch's worktree.
+1. Hardening release (pending owner): heredoc secret reads (`python3 - <<EOF`), unwrap `uv run`/`npx`/`pnpm exec`, CHANGELOG note that `.pem`/`.key` interpreter args are refused, log allowed merges in the merge guard, no "commits on no remote" denial for a squash-merged branch's worktree.
 2. `[slice] max_in_flight` per project (pending owner); kabl OOM: shared `CARGO_TARGET_DIR` + `CARGO_BUILD_JOBS` (pending owner).
 3. Re-run the static corpus against 0.2.x: precision for `test-removed`, `tautological-assert`, `assert-swallowed`, `dependency-added`, guard denials. Propose demotions; owner decides.
 4. `nonslop stats` on kabl and aegis after a week of use.
-5. A/B harness for caveman and ponytail (haiku, minimal quota, pilot first).
+5. Optional: A/B the Style block against no instruction (haiku, minimal quota, pilot first), if its effect is ever in doubt.
 
 ## Waiting on owner
-- 4 decisions: verify gates for nonslop (`hooks` command + `[verify].run`), kabl build sharing, `max_in_flight`, scope of 0.2.3.
+- 4 decisions: verify gates for nonslop (`hooks` command + `[verify].run`), kabl build sharing, `max_in_flight`, scope of the hardening release.
+- Delete standalone `skills/caveman` and `skills/ponytail` in `~/.claude` and `~/.claude-alt` (`rm -rf` is denied for agents); kabl's `.nonslop.toml` note about caveman/ponytail.
 - Delete 15 local squash-merged branches (`git branch -D` is denied for agents); `nonslop status` lists them.
 - aegis `[slop]` tuning (BLE001, T201); kabl allow rule, Rust 1.100.0, kabl_agents sink.
 
