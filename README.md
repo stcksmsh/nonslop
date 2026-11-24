@@ -116,7 +116,7 @@ tools/slopstop/    static slop checks and the shell-command reader, self-contain
 tests/             hook payload tests and the slice commands end to end
 rules/core.md      the shared rules every agent receives
 agents/            builder, reviewer
-skills/            coordinator, caveman, ponytail
+skills/            coordinator
 hooks/hooks.json   Claude Code hook wiring
 templates/         what `nonslop init` puts in a project
 examples/          a real project's .nonslop.toml
@@ -138,4 +138,3 @@ eval/              how slopstop and a competitor were measured: reports, seeds, 
 ## Licensing
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
-The two vendored skills keep their own MIT licenses; see `THIRD_PARTY.md`.

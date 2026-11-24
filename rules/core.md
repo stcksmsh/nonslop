@@ -39,13 +39,11 @@
 - One plain command per call where you can. Compound commands (`&&`, `;`, pipes, `$(...)`) can trip worktree and permission guards.
 - No `rm -rf`. Use `git rm` for tracked files.
 
-**Writing**
-- Chat replies and messages between agents are terse. Durable text (commits, pull requests, code comments, docs) is normal English.
+**Style**
+- Replies are terse: no filler, pleasantries, hedging or narration of tool calls. Code, commands, numbers and exact error text stay verbatim. Use full sentences for warnings, uncertainty, destructive actions and the final report. Commits, pull requests, code comments and docs are normal English.
+- Code is the least that works: reuse what the codebase has, then the standard library, then a native feature, then an existing dependency, and only then new code. No abstractions, options or files nobody asked for. Match the surrounding code's scope and idiom.
+- Never cut input validation at trust boundaries, error handling for real failures, security, or a test for new logic.
 - Comments explain why, not what. No narration of the code, no notes addressed to whoever asked for the change.
-
-**Laziest thing that works**
-- Reuse what is in the codebase, then the standard library, then a native feature, then an existing dependency, and only then new code. No abstractions nobody asked for, nothing "for later".
-- Never skip input validation, error handling for real failure modes, or security to get there.
 
 **When unsure**
 - If a question is ambiguous and the answer changes what you would build, or a product or taste decision is needed, stop and report with `BLOCKED` instead of guessing. Ask one answerable question: the decision, the options, and which "Done means" item it holds up.

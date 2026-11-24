@@ -308,6 +308,11 @@ def test_merge_policy(work: Path) -> None:
           bad.count("WARNING") == 1 and "'yes'" in bad and "wait for the owner" in bad and "coordinator may merge" not in bad, bad[-400:])
 
 
+def test_style() -> None:
+    _, out, _ = hook("session_start.py", {}, "--print")
+    check("session start carries the Style block", "least that works" in out and "full sentences for warnings" in out, out[-400:])
+
+
 def main() -> int:
     scratch_root = ROOT / ".claude" / "tmp"
     scratch_root.mkdir(parents=True, exist_ok=True)
@@ -320,6 +325,7 @@ def main() -> int:
         test_gates(work)
         test_stats(repo)
         test_merge_policy(work)
+        test_style()
     finally:
         shutil.rmtree(work, ignore_errors=True)
     print(f"\n{passed} passed, {failed} failed")
