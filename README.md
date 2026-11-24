@@ -85,7 +85,7 @@ nonslop stats            # gate hits per rule, hook time, tokens per branch, rev
 2. A builder implements it in its own worktree. When it tries to stop, hooks check: only files in scope changed, clean tree, pushed, open pull request, the project's gates.
 3. `nonslop slice verify <branch>` repeats the checks on the pushed commit in a fresh worktree. What the builder said it ran is not consulted.
 4. A reviewer judges the diff against the numbered items. `nonslop slice review` records its verdict with the commit.
-5. A later push makes both stale. The coordinator's `gh pr merge` is denied until the slice is verified and reviewed at its current head and CI is green. The owner can always merge by hand.
+5. A later push makes both stale. The coordinator's `gh pr merge` is denied until the slice is verified and reviewed at its current head and CI is green. The owner can always merge by hand. `[merge] coordinator = "auto"` lets the coordinator merge once those checks pass; the default `"ask"` waits for the owner's "merge <n>".
 
 If a builder cannot clear its finish checks it is let go after `[done].stop_retries` repeats, so it cannot loop forever. That is recorded as `released`, shown by `nonslop status` and at session start, and never passes the merge check.
 
